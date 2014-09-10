@@ -15,7 +15,6 @@ class UserOrganizationFilter < ActiveRecord::Base
 
   # Callbacks
   after_initialize :set_defaults
-  after_save       :require_at_least_one_grantee     # validate model for HABTM relationships
   
   # Clean up any HABTM associations before the asset is destroyed
   before_destroy { :clean_habtm_relationships }
@@ -29,6 +28,7 @@ class UserOrganizationFilter < ActiveRecord::Base
   validates   :user_id,       :presence => :true
   validates   :name,          :presence => :true
   validates   :description,   :presence => :true
+  validates   :grantees,      :presence => :true
   
   # default scope
   default_scope { where(:active => true) }
@@ -42,7 +42,7 @@ class UserOrganizationFilter < ActiveRecord::Base
     :user_id,
     :name,
     :description,
-    :grantee_ids
+    :grantee_ids => []
   ]
   
   #------------------------------------------------------------------------------
@@ -56,13 +56,6 @@ class UserOrganizationFilter < ActiveRecord::Base
   end
   
   protected
-
-  def require_at_least_one_grantee
-    if grantees.count == 0
-      errors.add(:grantees, "must be selected.")
-      return false
-    end
-  end
 
   def clean_habtm_relationships
     grantees.clear

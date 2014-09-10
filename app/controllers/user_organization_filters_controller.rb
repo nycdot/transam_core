@@ -91,17 +91,11 @@ class UserOrganizationFiltersController < OrganizationAwareController
     add_breadcrumb "Organization Filters", user_user_organization_filters_path(current_user)
     add_breadcrumb "New"
 
-    @user_organization_filter = UserOrganizationFilter.new(form_params.except(:grantee_ids))
+    @user_organization_filter = UserOrganizationFilter.new(form_params)
     @user_organization_filter.user = current_user
 
     respond_to do |format|
       if @user_organization_filter.save
-        # Add the grantees into the object. Make sure that the elements are unique so
-        # the same org is not added more than once.
-        grantee_list = form_params[:grantee_ids].split(',').uniq
-        grantee_list.each do |id|
-          @user_organization_filter.grantees << Grantee.find(id)
-        end
         
         notify_user(:notice, 'Filter was sucessfully created.')
         format.html { redirect_to [current_user, @user_organization_filter] }
@@ -128,14 +122,6 @@ class UserOrganizationFiltersController < OrganizationAwareController
 
     respond_to do |format|
       if @user_organization_filter.update(form_params)
-        # clear the existing list of grantees
-        @user_organization_filter.grantees.clear
-        # Add the (possibly) new grantees into the object
-        grantee_list = form_params[:grantee_ids].split(',')
-        grantee_list.each do |id|
-          @user_organization_filter.grantees << Grantee.find(id)
-        end
-        
         
         puts @user_organization_filter.inspect
         notify_user(:notice, 'Filter was sucessfully updated.')
