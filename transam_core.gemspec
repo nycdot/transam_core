@@ -22,6 +22,7 @@ Gem::Specification.new do |s|
   s.add_dependency "rolify"
   s.add_dependency "georuby"
   s.add_dependency "high_voltage"
+  s.add_dependency "select2-rails"
   s.add_dependency "fullcalendar-rails"
   
   # for background processing jobs  
