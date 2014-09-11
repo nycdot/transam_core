@@ -8,7 +8,7 @@
     .col-md-8
       = dialog_tag('Organizations Filter', {:icon => 'fa fa-list', :class => "form-part"}) do
         #org_select.input-xlarge
-          = f.association :grantees, :collection => Organization.where(id: @organization_list), :label => "Organizations", :input_html => {:multiple => true}, :include_blank => false
+          = f.association :grantees, :collection => Organization.where(id: @organization_list), :label_method => lambda { |o| "#{o.name} (#{o.short_name})" }, :label => "Organizations", :input_html => {:multiple => true}, :include_blank => false
 
  
     .col-md-12
