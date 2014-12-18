@@ -25,6 +25,9 @@ class Asset < ActiveRecord::Base
   # Clean up any HABTM associations before the asset is destroyed
   before_destroy { asset_groups.clear }
 
+  # Clear cache on update
+  before_update :clear_cache_objects
+
   #------------------------------------------------------------------------------
   # Associations common to all asset types
   #------------------------------------------------------------------------------
@@ -626,6 +629,17 @@ class Asset < ActiveRecord::Base
   # Cache key for this asset
   def get_cache_key(key)
     "#{object_key}:#{key}"
+  end
+
+  def clear_cache_object(key)
+    Rails.cache.delete(get_cache_key(key))
+  end
+
+  def clear_cache_objects
+    #TODO LIST
+    for i in list
+      clear_cache_object(i)
+    end
   end
 
   # updates the calculated values of an asset
