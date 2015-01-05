@@ -144,7 +144,7 @@ class Asset < ActiveRecord::Base
 
   searchable do
 
-    text :object_key, :asset_tag
+    text :object_key, :asset_tag, :manufacturer_model, :external_id
 
     # text :comments do
     #   comments.map { |comment| comment.body }
@@ -157,15 +157,6 @@ class Asset < ActiveRecord::Base
   # that can be used for operations like full text search etc. Each derived class
   # can add their own fields to the list
   #------------------------------------------------------------------------------
-
-  # List of fields which can be searched using a simple text-based search
-  SEARCHABLE_FIELDS = [
-    'object_key',
-    'asset_tag',
-    'manufacturer_model',
-    'external_id'
-
-  ]
 
   # List of fields that should be nilled when a copy is made
   CLEANSABLE_FIELDS = [
