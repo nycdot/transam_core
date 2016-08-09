@@ -30,6 +30,13 @@ namespace :transam do
     end
   end
 
+  desc "Updates the SOGR of every asset"
+  task update_sogr: :environment do
+    Asset.find_each do |a|
+      a.update_sogr
+    end
+  end
+
   desc "Updates all updateable attributes.  Can accept a sql fragment to restrict"
   task :update_all, [:sql_frag] => [:environment] do |t, args|
     t_start = Time.now
@@ -47,11 +54,12 @@ namespace :transam do
       typed_asset = Asset.get_typed_asset(a)
       typed_asset.update_methods.each do |m|
         begin
-          typed_asset.send(m)
+          typed_asset.send(m, false)
         rescue Exception => e
           Rails.logger.warn e.message
         end
       end
+      typed_asset.save
       assets_run += 1
       puts "#{assets_run} (#{((assets_run / total_num) * 100).to_i}%)"
     end

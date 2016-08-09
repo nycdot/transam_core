@@ -63,8 +63,10 @@
   var asset_group = #{@asset_group.to_i};
   var org_id = #{@org_id.to_i};
   var early_disposition = #{@early_disposition || false};
-  var path = '#{inventory_path("x")}';
+  var transferred_assets = #{@transferred_assets || false};
 
+  //TODO writing this out with a longer notation takes considerably more time.
+  var path = '#{@early_disposition ? inventory_asset_event_path("x", "event_key") : @transferred_assets ? edit_inventory_path("x") : inventory_path("x")}';
 
   var ids = #{ @id_filter_list };
 
@@ -94,11 +96,17 @@
     if (early_disposition) {
       params.early_disposition = 1;
     }
+   if (transferred_assets) {
+      params.transferred_assets = 1;
+    }
     return params;
   }
 
   $('#asset_server_table').on('click-row.bs.table', function (e, row, $element) {
     var url = path.replace("x", row['object_key']);
+    if(early_disposition) {
+      url = url.replace("event_key", row['early_disposition_event_object_key']);
+    }
     document.location.href = url;
   }).on('sort.bs.table', function(e, name, order) {
     $('#asset_server_table').bootstrapTable('selectPage', 1);

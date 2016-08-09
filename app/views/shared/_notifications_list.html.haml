@@ -1,0 +1,25 @@
+.table-responsive
+  %table.table.table-hover{:id => 'notifications_table', :data => {:toggle => 'table',
+    :pagination => 'true',
+    :show_pagination_switch => 'true',
+    :page_list => "[5, 10, 20, 50, 100, 200]",
+    :page_size => current_user.num_table_rows,
+    :search => 'false',
+    :toolbar => "#table_actions",
+    :export_types => "['csv', 'txt', 'excel']",
+    :show_export => 'false',
+    :resizable => 'true',
+    :show_columns => 'false',
+    :show_toggle => 'false',
+    :maintain_selected => 'true',
+    :single_select => 'false'}}
+
+    %tbody
+      - notifications.each do |n|
+        %tr
+          %td.left
+            = link_to notification_path(n.notification) do
+              = n.notification.text
+          %td.right
+            = link_to notification_path(n.notification), remote: true, method: :put, title: 'Mark as Read', style: 'padding-right: 15px;' do
+              %i.fa.fa-check.fa-fw

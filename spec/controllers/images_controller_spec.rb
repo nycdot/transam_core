@@ -1,12 +1,12 @@
 require 'rails_helper'
 
 RSpec.describe ImagesController, :type => :controller do
-  
+
   let(:test_user) { create(:admin) }
   let(:bus) { create(:buslike_asset) }
 
   before(:each) do
-    User.destroy_all
+    Organization.destroy_all
     test_user.organizations << test_user.organization
     test_user.save!
     sign_in test_user

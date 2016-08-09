@@ -58,6 +58,18 @@ class AssetEventsController < AssetAwareController
       @asset_event = @asset.build_typed_event(asset_event_type.class_name.constantize)
     end
 
+    if params[:transferred] == '1'
+      @transferred = true
+    end
+
+    unless params[:causal_asset_event_id].nil?
+      @causal_asset_event_id = params[:causal_asset_event_id]
+    end
+
+    unless params[:causal_asset_event_name].nil?
+      @causal_asset_event_name = params[:causal_asset_event_name]
+    end
+
     add_new_show_create_breadcrumbs
 
     respond_to do |format|
@@ -137,6 +149,14 @@ class AssetEventsController < AssetAwareController
       @asset_event.creator = current_user
     end
 
+    unless params[:causal_asset_event_id].nil?
+      @causal_asset_event = AssetEvent.find_by(:object_key => params[:causal_asset_event_id])
+    end
+
+    unless params[:causal_asset_event_name].nil?
+      @causal_asset_event_name = params[:causal_asset_event_name]
+    end
+
     add_new_show_create_breadcrumbs
 
     respond_to do |format|
@@ -151,6 +171,15 @@ class AssetEventsController < AssetAwareController
         # if notification enabled, then send out
         if @asset_event.class.try(:workflow_notification_enabled?)
           @asset_event.notify_event_by(current_user, :new)
+        end
+
+        #If another event resulted in this event we should provess the other event as well
+        unless @causal_asset_event.nil? || @causal_asset_event_name.nil?
+          @causal_asset_event = AssetEvent.as_typed_event @causal_asset_event
+          if @causal_asset_event.class.name == 'EarlyDispositionRequestUpdateEvent' && @causal_asset_event_name == 'approve_via_transfer'
+            @causal_asset_event.state = 'transfer_approved'
+            @causal_asset_event.save
+          end
         end
 
         format.html { redirect_to inventory_url(@asset) }
@@ -191,9 +220,17 @@ class AssetEventsController < AssetAwareController
 
     # Check that this is a valid event name for the state machines
     asset_event_class = @asset_event.class
+
     if asset_event_class.try(:event_names) && asset_event_class.event_names.include?(params[:event])
       event_name = params[:event]
-      if @asset_event.fire_state_event(event_name)
+
+      # special cases
+      # jump to final disposition page if a manager approves an early disposition request via transfer
+      if asset_event_class.name == 'EarlyDispositionRequestUpdateEvent' && event_name == "approve_via_transfer"
+        is_redirected = true
+        # we do not want to fire approval of the application event approval
+        redirect_to new_inventory_asset_event_path(@asset_event.asset, :event_type => DispositionUpdateEvent.asset_event_type.id, :transferred => 1, :causal_asset_event_id => @asset_event.object_key, :causal_asset_event_name => event_name)
+      elsif @asset_event.fire_state_event(event_name)
         event = WorkflowEvent.new
         event.creator = current_user
         event.accountable = @asset_event
@@ -205,15 +242,10 @@ class AssetEventsController < AssetAwareController
           @asset_event.notify_event_by(current_user, event_name)
         end
 
-        # special cases
-        # jump to final dispositin page if a manager approves an early disposition request via transfer
-        if asset_event_class.name == 'EarlyDispositionRequestUpdateEvent' && event_name == "approve_via_transfer"
-          is_redirected = true
-          redirect_to new_inventory_asset_event_path(@asset_event.asset, :event_type => DispositionUpdateEvent.asset_event_type.id) 
-        end
       else
         notify_user(:alert, "Could not #{event_name.humanize} asset event #{@asset_event}")
       end
+
     else
       notify_user(:alert, "#{params[:event_name]} is not a valid event for a #{asset_event_class.name}")
     end

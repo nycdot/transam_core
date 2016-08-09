@@ -58,6 +58,9 @@ class Asset < ActiveRecord::Base
   # each belongs to a single manufacturer
   belongs_to  :manufacturer
 
+  # an upload can be added by bulk updates - new inventory
+  belongs_to :upload
+
   # each can belong to a parent
   belongs_to  :parent, :class_name => "Asset",  :foreign_key => :parent_id
 
@@ -130,16 +133,16 @@ class Asset < ActiveRecord::Base
   validates     :purchase_date,       :presence => :true
   validates     :serial_number,       uniqueness: {scope: :organization, message: "must be unique within an organization"}, allow_nil: true, allow_blank: true
 
-  #validates     :in_service_date,     :presence => :true
-
   #-----------------------------------------------------------------------------
   # Attributes common to all asset types
   #-----------------------------------------------------------------------------
 
-  # Validations on core attributes
-  validates       :asset_tag,         :presence => true, :length => { :maximum => 12 }
   # Asset tags must be unique within an organization
   validates_uniqueness_of :asset_tag, :scope => :organization
+
+  # Validations on core attributes
+  validates       :asset_tag,         :presence => true, :length => { :maximum => 12 }
+  validate        :object_key_is_not_asset_tag
 
   #-----------------------------------------------------------------------------
   # Attributes that are used to cache asset condition information.
@@ -170,7 +173,7 @@ class Asset < ActiveRecord::Base
   # Returns a list of assets that have been disposed
   scope :disposed,    -> { where('assets.disposition_date IS NOT NULL') }
   # Returns a list of assets that are still operational
-  scope :operational, -> { where('assets.disposition_date IS NULL') }
+  scope :operational, -> { where('assets.disposition_date IS NULL AND assets.asset_tag != assets.object_key') }
   # Returns a list of asset that operational and are marked as being in service
   scope :in_service,  -> { where('assets.disposition_date IS NULL AND assets.service_status_type_id = 1')}
   # Returns a list of asset that in early replacement
@@ -223,6 +226,7 @@ class Asset < ActiveRecord::Base
     :update_scheduled_rehabilitation,
     :update_scheduled_disposition,
     :update_estimated_replacement_cost,
+    :update_scheduled_replacement_cost,
     :update_location
   ]
 
@@ -413,7 +417,10 @@ class Asset < ActiveRecord::Base
       :tagged => self.tagged?(options[:user]) ? 1 : 0
     }
 
-    json[:early_disposition_notes] = self.early_disposition_notes if options[:include_early_disposition]
+    if options[:include_early_disposition]
+      json[:early_disposition_notes] = self.early_disposition_notes
+      json[:early_disposition_event_object_key] = self.early_disposition_requests.last.try(:object_key)
+    end
 
     if self.respond_to? :book_value
       a = Asset.get_typed_asset self
@@ -476,17 +483,17 @@ class Asset < ActiveRecord::Base
     # the current planning year
     return false if estimated_replacement_year.blank?
 
-    if estimated_replacement_year <= current_planning_year_year
+    if policy_replacement_year <= current_planning_year_year
       # After ESL disposal
       true
     else
       # Prior ESL disposal request
-      last_request = early_disposition_requests.last 
+      last_request = early_disposition_requests.last
       if include_early_disposal_request_approved_via_transfer
         last_request.try(:is_approved?)
       else
         last_request.try(:is_unconditional_approved?)
-      end 
+      end
     end
   end
 
@@ -497,18 +504,18 @@ class Asset < ActiveRecord::Base
     # the current planning year
     return false if estimated_replacement_year.blank?
 
-    if estimated_replacement_year <= current_planning_year_year
+    if policy_replacement_year <= current_planning_year_year
       # Eligible for after ESL disposal
       false
     else
       # Prior ESL disposal request
-      last_request = early_disposition_requests.last 
+      last_request = early_disposition_requests.last
       # No previous request or was rejected
       !last_request || last_request.try(:is_rejected?)
     end
   end
 
-  # Return early disposition reason 
+  # Return early disposition reason
   # (this method is needed to show the reason in asset table)
   def early_disposition_notes
     early_disposition_requests.active.last.try(:comments) || ""
@@ -688,6 +695,7 @@ class Asset < ActiveRecord::Base
         event = asset.disposition_updates.last
         asset.disposition_date = event.event_date
         asset.disposition_type = event.disposition_type
+
         # Set the service status to disposed
         asset.service_status_type = ServiceStatusType.find_by(:code => 'D')
       else
@@ -703,14 +711,25 @@ class Asset < ActiveRecord::Base
         end
       end
       # save changes to this asset
-      if asset.changed?
-        asset.save(:validate => false)
-      end
+      asset.save(:validate => false)
     end
   end
 
+  # Determines if the asset has been disposes and if a type is passed if it has been disposed by that type
+  def disposed disposition_type=nil
+    asset = is_typed? ? self : Asset.get_typed_asset(self)
+
+    is_disposed = asset.service_status_type == ServiceStatusType.find_by(:code => 'D')
+
+    unless disposition_type.nil?
+      is_disposed = is_disposed && asset.disposition_type_id == disposition_type.id
+    end
+
+    return is_disposed
+  end
+
   # Forces an update of an assets location. This performs an update on the record.
-  def update_location
+  def update_location(save_asset = true)
 
     Rails.logger.debug "Updating the recorded location for asset = #{object_key}"
 
@@ -724,13 +743,11 @@ class Asset < ActiveRecord::Base
         self.location_comments = event.comments
       end
       # save changes to this asset
-      if self.changed?
-        save
-      end
+      save if save_asset
     end
   end
 
-  def update_rehabilitation
+  def update_rehabilitation(save_asset = true)
     Rails.logger.debug "Updating the recorded rehabilitation for asset = #{object_key}"
 
     # Make sure we are working with a concrete asset class
@@ -745,14 +762,12 @@ class Asset < ActiveRecord::Base
         asset.scheduled_rehabilitation_year = nil
       end
       # save changes to this asset
-      if asset.changed?
-        asset.save(:validate => false)
-      end
+      asset.save(:validate => false) if save_asset
     end
   end
 
   # Forces an update of an assets service status. This performs an update on the record
-  def update_service_status
+  def update_service_status(save_asset = true)
     Rails.logger.debug "Updating service status for asset = #{object_key}"
 
     # Make sure we are working with a concrete asset class
@@ -761,22 +776,20 @@ class Asset < ActiveRecord::Base
     # can't do this if it is a new record as none of the IDs would be set
     unless asset.new_record? or disposed?
       if asset.service_status_updates.empty?
-        service_status_type = nil
-        service_status_date = nil
+        asset.service_status_type = nil
+        asset.service_status_date = nil
       else
         event = asset.service_status_updates.last
         asset.service_status_date = event.event_date
         asset.service_status_type = event.service_status_type
       end
       # save changes to this asset
-      if asset.changed?
-        asset.save(:validate => false)
-      end
+      asset.save(:validate => false) if save_asset
     end
   end
 
   # Forces an update of an assets reported condition. This performs an update on the record.
-  def update_condition
+  def update_condition(save_asset = true)
 
     Rails.logger.debug "Updating condition for asset = #{object_key}"
 
@@ -793,15 +806,13 @@ class Asset < ActiveRecord::Base
         self.reported_condition_type = ConditionType.from_rating(event.assessed_rating)
       end
       # save changes to this asset
-      if self.changed?
-        save(:validate => false)
-      end
+      save(:validate => false) if save_asset
     end
 
   end
 
   # Forces an update of an assets scheduled replacement. This performs an update on the record.
-  def update_scheduled_replacement
+  def update_scheduled_replacement(save_asset = true)
 
     Rails.logger.debug "Updating the scheduled replacement year for asset = #{object_key}"
 
@@ -812,14 +823,12 @@ class Asset < ActiveRecord::Base
         self.replacement_reason_type_id = event.replacement_reason_type_id unless event.replacement_reason_type_id.nil?
       end
       # save changes to this asset
-      if self.changed?
-        save(:validate => false)
-      end
+      save(:validate => false) if save_asset
     end
   end
 
   # Forces an update of an assets scheduled replacement. This performs an update on the record.
-  def update_scheduled_rehabilitation
+  def update_scheduled_rehabilitation(save_asset = true)
 
     Rails.logger.debug "Updating the scheduled rehabilitation year for asset = #{object_key}"
 
@@ -831,14 +840,12 @@ class Asset < ActiveRecord::Base
         self.scheduled_rehabilitation_year = event.rebuild_year
       end
       # save changes to this asset
-      if self.changed?
-        save(:validate => false)
-      end
+      save(:validate => false) if save_asset
     end
   end
 
   # Forces an update of an assets scheduled disposition
-  def update_scheduled_disposition
+  def update_scheduled_disposition(save_asset = true)
 
     Rails.logger.debug "Updating the scheduled disposition for asset = #{object_key}"
 
@@ -850,14 +857,12 @@ class Asset < ActiveRecord::Base
         self.scheduled_disposition_year = event.disposition_year
       end
       # save changes to this asset
-      if self.changed?
-        save(:validate => false)
-      end
+      save(:validate => false) if save_asset
     end
   end
 
 
-  def update_estimated_replacement_cost
+  def update_estimated_replacement_cost(save_asset = true)
 
     return if disposed?
 
@@ -868,9 +873,7 @@ class Asset < ActiveRecord::Base
     end
     self.estimated_replacement_cost = calculate_estimated_replacement_cost(start_date)
     # save changes to this asset
-    if self.changed?
-      save(:validate => false)
-    end
+    save(:validate => false) if save_asset
 
   end
 
@@ -878,7 +881,7 @@ class Asset < ActiveRecord::Base
   # Calculates and stores the scheduled replacement for the asset based on the
   # scheduled replacement year
   #-----------------------------------------------------------------------------
-  def update_scheduled_replacement_cost
+  def update_scheduled_replacement_cost(save_asset = true)
 
     return if disposed?
 
@@ -890,9 +893,7 @@ class Asset < ActiveRecord::Base
     self.scheduled_replacement_cost = calculate_estimated_replacement_cost(start_date)
 
     # save changes to this asset
-    if self.changed?
-      save(:validate => false)
-    end
+    save(:validate => false) if save_asset
 
   end
 
@@ -911,7 +912,7 @@ class Asset < ActiveRecord::Base
     class_name = asset.policy_analyzer.get_replacement_cost_calculation_type.class_name
     # create an instance of this class and call the method
     calculator_instance = class_name.constantize.new
-    calculator_instance.calculate_on_date(asset, on_date)
+    (calculator_instance.calculate_on_date(asset, on_date)+0.5).to_i #round
 
   end
 
@@ -1013,9 +1014,9 @@ class Asset < ActiveRecord::Base
   end
 
   # Update the SOGR for an asset
-  def update_sogr(policy = nil)
+  def update_sogr(save_asset = true, policy = nil)
     unless disposed?
-      update_asset_state(policy)
+      update_asset_state(save_asset, policy)
     end
   end
   # Update the replacement costs for an asset
@@ -1032,6 +1033,16 @@ class Asset < ActiveRecord::Base
   def cache_clear_all
     clear_cache
   end
+
+  # This is soemthing that should be handled by each asset type individually so we will need to ensure it is
+  # implemented for each type. The model here is the same that organizations use.
+  def transfer new_organization_id
+    typed_asset = Asset.get_typed_asset(self)
+
+    return typed_asset.transfer new_organization_id
+  end
+
+
 
   #-----------------------------------------------------------------------------
   #
@@ -1066,7 +1077,7 @@ class Asset < ActiveRecord::Base
       Rails.logger.debug "Start Date = #{start_date}"
       class_name = this_policy_analyzer.get_replacement_cost_calculation_type.class_name
       calculator_instance = class_name.constantize.new
-      self.estimated_replacement_cost = calculator_instance.calculate_on_date(self, start_date)
+      self.estimated_replacement_cost = (calculator_instance.calculate_on_date(self, start_date)+0.5).to_i
       Rails.logger.debug "estimated_replacement_cost = #{self.estimated_replacement_cost}"
     end
 
@@ -1078,7 +1089,7 @@ class Asset < ActiveRecord::Base
       calculator_instance = class_name.constantize.new
       start_date = start_of_fiscal_year(scheduled_replacement_year) unless scheduled_replacement_year.blank?
       Rails.logger.debug "Start Date = #{start_date}"
-      self.scheduled_replacement_cost = calculator_instance.calculate_on_date(self, start_date)
+      self.scheduled_replacement_cost = (calculator_instance.calculate_on_date(self, start_date)+0.5).to_i
     end
 
     self.early_replacement_reason = nil if check_early_replacement && !is_early_replacement?
@@ -1114,7 +1125,7 @@ class Asset < ActiveRecord::Base
   end
 
   # updates the calculated values of an asset
-  def update_asset_state(policy = nil)
+  def update_asset_state(save_asset = true, policy = nil)
     Rails.logger.debug "Updating SOGR for asset = #{object_key}"
 
     if disposed?
@@ -1133,19 +1144,23 @@ class Asset < ActiveRecord::Base
     # returns the year in which the asset should be replaced based on the policy and asset
     # characteristics
     begin
+      # store old policy replacement year for use later
+      old_policy_replacement_year = asset.policy_replacement_year
+
       # see what metric we are using to determine the service life of the asset
       class_name = policy_analyzer.get_service_life_calculation_type.class_name
       asset.policy_replacement_year = calculate(asset, class_name)
 
-      # If the asset is in backlog set the scheduled year to the current FY year
-      if asset.policy_replacement_year < current_planning_year_year
-        Rails.logger.debug "Asset is in backlog. Setting scheduled replacement year to #{current_planning_year_year}"
-        asset.scheduled_replacement_year = current_planning_year_year
-        asset.in_backlog = true
-      else
+      if asset.scheduled_replacement_year.nil? or asset.scheduled_replacement_year == old_policy_replacement_year
         Rails.logger.debug "Setting scheduled replacement year to #{asset.policy_replacement_year}"
         asset.scheduled_replacement_year = asset.policy_replacement_year
         asset.in_backlog = false
+      end
+      # If the asset is in backlog set the scheduled year to the current FY year
+      if asset.scheduled_replacement_year < current_planning_year_year
+        Rails.logger.debug "Asset is in backlog. Setting scheduled replacement year to #{current_planning_year_year}"
+        asset.scheduled_replacement_year = current_planning_year_year
+        asset.in_backlog = true
       end
     rescue Exception => e
       Rails.logger.warn e.message
@@ -1173,16 +1188,16 @@ class Asset < ActiveRecord::Base
     end
 
     # save changes to this asset
-    if asset.changed?
-      asset.save(:validate => false)
-    end
+    asset.save(:validate => false) if save_asset
   end
 
   def update_service_life typed_asset
     # Get the policy analyzer
     policy_analyzer = typed_asset.policy_analyzer
 
-    typed_asset.expected_useful_life = policy_analyzer.get_min_service_life_months
+    typed_asset.purchased_new ?
+        typed_asset.expected_useful_life = policy_analyzer.get_min_service_life_months :
+        typed_asset.expected_useful_life = policy_analyzer.get_min_used_purchase_service_life_months
   end
 
 
@@ -1220,6 +1235,14 @@ class Asset < ActiveRecord::Base
     rescue Exception => e
       Rails.logger.error e.message
       raise RuntimeError.new "#{class_name} calculation failed for asset #{asset.object_key} and policy #{policy.name}"
+    end
+  end
+
+  def object_key_is_not_asset_tag
+    unless self.asset_tag.nil? || self.object_key.nil?
+      if self.asset_tag == self.object_key
+        @errors.add(:asset_tag, "should not be the same as the asset id")
+      end
     end
   end
 

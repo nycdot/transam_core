@@ -29,7 +29,8 @@ class UploadsController < OrganizationAwareController
       add_breadcrumb type.name unless type.nil?
     end
 
-    @uploads = Upload.where(conditions.join(' AND '), *values).order(:created_at)
+    asset_ids = Asset.where('organization_id IN (?) AND upload_id IS NOT NULL', @organization_list).pluck(:upload_id)
+    @uploads = Upload.where('('+conditions.join(' AND ')+') OR id IN (?) OR user_id = ?', *values, asset_ids, current_user.id).order(:created_at)
 
     # cache the set of asset ids in case we need them later
     cache_list(@uploads, INDEX_KEY_LIST_VAR)
@@ -90,13 +91,14 @@ class UploadsController < OrganizationAwareController
     affected_assets = @upload.asset_events.map(&:asset).uniq
 
     @upload.reset
-    @upload.update(force_update: true, file_status_type: FileStatusType.find_by(name: "Reverted"))
+    @upload.update(file_status_type: FileStatusType.find_by(name: "Reverted"))
 
     # re-update the assets which previously had events
     affected_assets.each do |affected|
       job = AssetUpdateJob.new(affected.object_key)
       fire_background_job(job)
     end
+
 
     notify_user(:notice, "Upload has been reverted.")
 
@@ -118,7 +120,6 @@ class UploadsController < OrganizationAwareController
     # Make sure the force flag is set and that the model is set back to
     # unprocessed.  reset destroys dependent asset_events
     @upload.reset
-    @upload.force_update = true
     @upload.save(:validate => false)
 
     notify_user(:notice, "File was resubmitted for processing.")
@@ -147,10 +148,8 @@ class UploadsController < OrganizationAwareController
     #@organization.asset_type_counts.each{|x| @asset_types << AssetType.find(x[0])}
 
     AssetType.all.each do |type|
-      klass = type.class_name.constantize
-      if klass.where(organization: @organization_list).count > 0
-        @asset_types << type
-      end
+      assets = Asset.where(asset_type: type)
+      @asset_types << {id: type.id, name: type.to_s, orgs: @organization_list.select{|o| assets.where(organization_id: o).count > 0}}
     end
 
   end
@@ -191,7 +190,7 @@ class UploadsController < OrganizationAwareController
 
       # See if an org was set, use the default otherwise
       if template_proxy.organization_id.blank?
-        org = @organization
+        org = nil
       else
         o = Organization.find(template_proxy.organization_id)
         org = Organization.get_typed_organization(o)
@@ -213,7 +212,7 @@ class UploadsController < OrganizationAwareController
     end
 
     # Find out which builder is used to construct the template and create an instance
-    builder = file_content_type.builder_name.constantize.new(:organization => org, :asset_types => [*asset_types])
+    builder = file_content_type.builder_name.constantize.new(:organization => org, :asset_types => [*asset_types], :organization_list => @organization_list)
 
     # Generate the spreadsheet. This returns a StringIO that has been rewound
     if from_form
@@ -231,7 +230,7 @@ class UploadsController < OrganizationAwareController
     ObjectSpace.undefine_finalizer(file)
     #You can uncomment this line when debugging locally to prevent Tempfile from disappearing before download.
     @filepath = file.path
-    @filename = "#{org.short_name.downcase}_#{file_content_type.class_name.underscore}_#{Date.today}.xlsx"
+    @filename = "#{org.present? ? org.short_name.downcase : 'MultiOrg'}_#{file_content_type.class_name.underscore}_#{Date.today}.xlsx"
     begin
       file << stream.string
     rescue => ex
@@ -264,10 +263,6 @@ class UploadsController < OrganizationAwareController
 
     @upload = Upload.new(form_params)
     @upload.user = current_user
-    @upload.force_update = true
-    if @upload.organization.nil?
-      @upload.organization = @organization
-    end
 
     add_breadcrumb "New Template"
 

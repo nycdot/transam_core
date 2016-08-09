@@ -7,7 +7,6 @@ RSpec.describe AssetEventsController, :type => :controller do
   let(:test_event) { create(:asset_event) }
 
   before(:each) do
-    User.destroy_all
     test_user.organizations << test_user.organization
     test_user.save!
     sign_in test_user
@@ -78,5 +77,35 @@ RSpec.describe AssetEventsController, :type => :controller do
     delete :destroy, :inventory_id => bus.object_key, :id => test_event.object_key
 
     expect(AssetEvent.find_by(:object_key => test_event.object_key)).to be nil
+  end
+
+  describe "workflow events" do
+    let(:early_disp_event) { create(:early_disposition_request_update_event) }
+
+    before(:each) do 
+      request.env["HTTP_REFERER"] = root_path
+    end
+
+    it 'fire workflow event' do
+      expect{
+        get :fire_workflow_event, :inventory_id => bus.object_key, :id => early_disp_event.object_key, :event => 'approve'
+        }.to change {WorkflowEvent.count}.by(1)
+    end
+
+    it 'refresh current page' do 
+      get :fire_workflow_event, :inventory_id => bus.object_key, :id => early_disp_event.object_key, :event => 'approve'
+
+      expect(response).to redirect_to(root_path)
+    end
+
+    it 'redirect to final disposition page if an early disposition event was approved via transfer ' do 
+      bus.asset_events << early_disp_event
+      bus.save!
+
+      get :fire_workflow_event, :inventory_id => bus.object_key, :id => early_disp_event.object_key, :event => 'approve_via_transfer'
+
+      expect(response).to redirect_to(new_inventory_asset_event_path(bus, :event_type => DispositionUpdateEvent.asset_event_type.id, :transferred => '1', :causal_asset_event_id => bus.asset_events.last.object_key,  :causal_asset_event_name => 'approve_via_transfer'))
+    end
+
   end
 end

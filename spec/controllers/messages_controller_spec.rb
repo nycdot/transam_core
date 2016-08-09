@@ -5,7 +5,7 @@ RSpec.describe MessagesController, :type => :controller do
   let(:test_msg) { create(:message) }
 
   before(:each) do
-    User.destroy_all
+    Organization.destroy_all
     sign_in FactoryGirl.create(:admin)
   end
 

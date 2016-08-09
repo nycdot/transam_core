@@ -11,9 +11,10 @@ Rails.application.routes.draw do
   end
 
   # Routes for the issues controller
-  resources :issues,    :only => [:new, :create] do
+  resources :issues,    :only => [:create, :update, :edit, :new] do
     member do
       get 'success'
+      get 'review'
     end
   end
 
@@ -160,6 +161,13 @@ Rails.application.routes.draw do
       collection do
         get   'filter'
       end
+    end
+  end
+
+  resources :notifications, only: [:index, :show, :update] do
+    collection do
+      get 'count'
+      get 'read_all'
     end
   end
 

@@ -42,7 +42,7 @@ class User < ActiveRecord::Base
 
   # every user has access to 0 or more organizations for reporting
   has_and_belongs_to_many :organizations, :join_table => 'users_organizations'
-  has_many :organization_users, through: :organizations, :source => 'users'
+  has_many :organization_users, -> {uniq}, through: :organizations, :source => 'users'
 
   # Every user can have 0 or more messages
   has_many   :messages
@@ -57,6 +57,9 @@ class User < ActiveRecord::Base
   # Messages that have been tagged by the user
   has_many    :message_tags
   has_many    :messages, :through => :message_tags
+
+  # Notifications
+  has_many    :user_notifications
 
   # Assets that have been tagged by the user
   has_many    :asset_tags
@@ -77,7 +80,7 @@ class User < ActiveRecord::Base
   validates :external_id,   :allow_nil => true, :length => { maximum: 32 }
   validates :title,         :allow_nil => true, :length => { maximum: 64 }
 
-  validates :email,         :presence => true,  :length => { maximum: 128 },  :uniqueness => true, :format => { :with => /\A[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]+\z/, :message => "email address is not valid" }
+  #validates :email,         :presence => true,  :length => { maximum: 128 },  :uniqueness => true, :format => { :with => /\A[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]+\z/, :message => "email address is not valid" }
   validates :phone,         :presence => true,  :length => { maximum: 12 }
   validates :phone_ext,     :allow_nil => true, :length => { maximum: 6 }
   validates :timezone,      :presence => true,  :length => { maximum: 32 }

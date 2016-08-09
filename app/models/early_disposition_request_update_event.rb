@@ -21,7 +21,7 @@ class EarlyDispositionRequestUpdateEvent < AssetEvent
 
   # Validations
   validates :comments,            :presence => true
-  validates :document,            :presence => true, :file_size => { :maximum => MAX_UPLOAD_FILE_SIZE.megabytes.to_i }
+  validates :document,            :file_size => { :maximum => MAX_UPLOAD_FILE_SIZE.megabytes.to_i }
 
   #------------------------------------------------------------------------------
   # Scopes
@@ -59,7 +59,7 @@ class EarlyDispositionRequestUpdateEvent < AssetEvent
     # request is rejected
     state :rejected
 
-    # request is conditionally approved, only allow transfering the asset to another agency
+    # request is conditionally approved, only allow transferring the asset to another agency
     state :transfer_approved
 
     #---------------------------------------------------------------------------
@@ -155,8 +155,8 @@ class EarlyDispositionRequestUpdateEvent < AssetEvent
       Role.find_by_name(:manager).try(:users)
 
     when :reject, :approve_via_transfer, :approve
-      # notify managers and creator
-      (Role.find_by_name(:manager).try(:users) || []) + [creator]
+      # notify creator
+      [creator]
     end
 
     recipients || []
@@ -181,7 +181,9 @@ class EarlyDispositionRequestUpdateEvent < AssetEvent
     event_desc = event_in_passive_tense(event)
 
     event_url = Rails.application.routes.url_helpers.inventory_asset_event_path self.try(:asset), self
-    
+
+    early_notification = Notification.create(text: "Early disposition request for #{asset.asset_tag} #{event_desc}", link: event_url, notifiable_type: 'AssetEvent', notifiable_id: self.id)
+
     recipients = if self.respond_to?(:notification_recipients)
       notification_recipients(event)
     else
@@ -189,14 +191,18 @@ class EarlyDispositionRequestUpdateEvent < AssetEvent
     end
     (recipients || []).uniq.each do |to_user|
       if to_user && to_user != sender
-        msg = Message.new
-        msg.user          = sender
-        msg.organization  = sender.try(:organization)
-        msg.to_user       = to_user
-        msg.subject       = "Early disposition request for #{asset.asset_tag} #{event_desc}"
-        msg.body          = "Early disposition request for #{asset.name} has been #{event_desc} by #{sender}. The request can be viewed at <a href='#{event_url}'>here</a>"
-        msg.priority_type = PriorityType.default
-        msg.save
+
+        UserNotification.create(notification: early_notification, user: to_user)
+
+
+        # msg = Message.new
+        # msg.user          = sender
+        # msg.organization  = sender.try(:organization)
+        # msg.to_user       = to_user
+        # msg.subject       = "Early disposition request for #{asset.asset_tag} #{event_desc}"
+        # msg.body          = "Early disposition request for #{asset.name} has been #{event_desc} by #{sender}. The request can be viewed <a href='#{event_url}'>here</a>"
+        # msg.priority_type = PriorityType.default
+        # msg.save
       end
     end
   end

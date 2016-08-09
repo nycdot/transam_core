@@ -11,11 +11,11 @@
     :boolean => :vertical_boolean}) do |f|
 
     = f.input :asset_type_id, :as => :hidden
-    = f.input :asset_subtype_id, :as => :hidden
     = f.input :organization_id, :as => :hidden
 
     .col-md-6
       = dialog_tag('Equipment', {:icon => 'fa fa-refresh', :class => "form_part"}) do
+        = f.association :asset_subtype, :collection => (AssetType.find_by(id: @asset.asset_type_id).try(:asset_subtypes) || []), :include_blank => false
         = f.input :asset_tag, :prompt => "Enter the asset tag...", :label => "Asset Tag"
         = f.input :external_id, :prompt => "Enter any external ID...", :label => "External ID"
         = f.input :description
@@ -50,7 +50,7 @@
 
         = f.input :purchased_new, :as => :radio_buttons, :required => true, :label => "Purchased New"
         = f.input :vendor_name, :label => 'Vendor', :input_html => {:autocomplete => 'off', :class => 'form-control', :placeholder => 'Enter vendor name', :id => 'vendor_name', :data => {:url => filter_vendors_path}}
-        = f.input :expected_useful_life, as: :hidden
+        = f.input :expected_useful_life, as: :hidden, :value => 0
 
     .col-md-12
       = f.button :submit, :class => 'btn btn-primary'

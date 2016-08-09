@@ -9,7 +9,6 @@ class Equipment < Asset
 
   validates :quantity,        :presence => :true, :numericality => {:only_integer => :true, :greater_than_or_equal_to => 1}
   validates :quantity_units,  :presence => true
-  validates :quantity_units,     :presence => true
 
   #------------------------------------------------------------------------------
   # Scopes
@@ -29,6 +28,28 @@ class Equipment < Asset
       :quantity_units,
       :quantity_units
     ]
+  end
+
+  def transfer new_organization_id
+    org = Organization.where(:id => new_organization_id).first
+
+    transferred_asset = self.copy false
+    transferred_asset.object_key = nil
+
+    transferred_asset.disposition_date = nil
+    transferred_asset.in_service_date = nil
+    transferred_asset.organization = org
+    transferred_asset.purchase_cost = nil
+    transferred_asset.purchase_date = nil
+    transferred_asset.purchased_new = false
+    transferred_asset.service_status_type = nil
+
+    transferred_asset.generate_object_key(:object_key)
+    transferred_asset.asset_tag = transferred_asset.object_key
+
+    transferred_asset.save(:validate => false)
+
+    return transferred_asset
   end
 
   #------------------------------------------------------------------------------

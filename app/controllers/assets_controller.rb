@@ -70,8 +70,11 @@ class AssetsController < AssetAwareController
     @spatial_filter = nil
 
     @assets = get_assets
+
     if @early_disposition
       add_breadcrumb "Early disposition proposed"
+    elsif @transferred_assets
+        add_breadcrumb "Transferred Assets"
     elsif @asset_group.present?
       asset_group = AssetGroup.find_by_object_key(@asset_group)
       add_breadcrumb asset_group
@@ -90,17 +93,18 @@ class AssetsController < AssetAwareController
       add_breadcrumb asset_type.name.titleize.pluralize(2)
     end
 
+    # check that an order param was provided otherwise use asset_tag as the default
+    params[:sort] ||= 'asset_tag'
+
     unless @fmt == 'xls'
       # cache the set of asset ids in case we need them later
-      cache_list(@assets, INDEX_KEY_LIST_VAR)
+      cache_list(@assets.order("#{params[:sort]} #{params[:order]}"), INDEX_KEY_LIST_VAR)
     end
 
     respond_to do |format|
       format.html
       format.js
       format.json {
-        # check that an order param was provided otherwise use asset_tag as the default
-        params[:sort] ||= 'asset_tag'
         render :json => {
           :total => @assets.count,
           :rows =>  @assets.order("#{params[:sort]} #{params[:order]}").limit(params[:limit]).offset(params[:offset]).as_json(user: current_user, include_early_disposition: @early_disposition)
@@ -157,7 +161,7 @@ class AssetsController < AssetAwareController
     get_next_and_prev_object_keys(@asset, INDEX_KEY_LIST_VAR)
     @prev_record_path = @prev_record_key.nil? ? "#" : inventory_path(@prev_record_key)
     @next_record_path = @next_record_key.nil? ? "#" : inventory_path(@next_record_key)
-    
+
     respond_to do |format|
       format.html # show.html.erb
       format.json { render :json => @asset }
@@ -169,7 +173,14 @@ class AssetsController < AssetAwareController
 
     add_breadcrumb "#{@asset.asset_type.name}".pluralize(2), inventory_index_path(:asset_type => @asset.asset_type, :asset_subtype => 0)
     add_breadcrumb "#{@asset.asset_subtype.name}", inventory_index_path(:asset_subtype => @asset.asset_subtype)
-    add_breadcrumb @asset.asset_tag, inventory_path(@asset)
+    # When editing a newly transferred asset this link is invalid so we don't want to show it.
+    if @asset.asset_tag == @asset.object_key
+      @asset.asset_tag = nil
+
+      @asset.fta_ownership_type = nil if @asset.respond_to?(:fta_ownership_type)
+    else
+      add_breadcrumb @asset.asset_tag, inventory_path(@asset)
+    end
     add_breadcrumb "Update master record", edit_inventory_path(@asset)
 
   end
@@ -177,9 +188,14 @@ class AssetsController < AssetAwareController
   def update
     @asset.updator = current_user
 
-    add_breadcrumb "#{@asset.asset_type.name}".pluralize(2), inventory_index_path
+    add_breadcrumb "#{@asset.asset_type.name}".pluralize(2), inventory_index_path(:asset_type => @asset.asset_type, :asset_subtype => 0)
     add_breadcrumb @asset.name, inventory_path(@asset)
     add_breadcrumb "Modify", edit_inventory_path(@asset)
+
+    # tranferred assets need to remove notification if exists
+    if @asset.asset_tag == @asset.object_key
+      Notification.where(notifiable_type: 'Asset', notifiable_id: @asset.id).first.update(active:false)
+    end
 
     respond_to do |format|
       if @asset.update_attributes(form_params)
@@ -217,7 +233,7 @@ class AssetsController < AssetAwareController
     asset_subtype = AssetSubtype.find(params[:asset_subtype])
     if asset_subtype.nil?
       notify_user(:alert, "Asset subtype '#{params[:asset_subtype]}' not found. Can't create new asset!")
-      redirect_to(inventory_index_url )
+      redirect_to(root_url)
       return
     end
 
@@ -234,11 +250,6 @@ class AssetsController < AssetAwareController
     else
       @asset.organization = @organization
     end
-
-    # default service life
-    policy_analyzer = @asset.policy_analyzer
-    @asset.expected_useful_life = policy_analyzer.get_min_service_life_months
-    @asset.expected_useful_miles = policy_analyzer.get_min_service_life_miles
 
     respond_to do |format|
       format.html # new.html.haml this had been an erb and is now an haml the change should just be caught
@@ -301,7 +312,7 @@ class AssetsController < AssetAwareController
 
     # make sure we can find the asset we are supposed to be removing and that it belongs to us.
     if @asset.nil?
-      redirect_to(inventory_url, :flash => { :alert => t(:error_404) })
+      redirect_to(inventory_index_url, :flash => { :alert => t(:error_404) })
       return
     end
 
@@ -311,7 +322,7 @@ class AssetsController < AssetAwareController
     notify_user(:notice, "Asset was successfully removed.")
 
     respond_to do |format|
-      format.html { redirect_to(inventory_url) }
+      format.html { redirect_to(inventory_index_url) }
       format.json { head :no_content }
     end
 
@@ -444,9 +455,12 @@ class AssetsController < AssetAwareController
       @fmt = 'html'
     end
 
-    # Check to see if search for early dispostion proposed assets only
+    # Check to see if search for early disposition proposed assets only
     if params[:early_disposition] == '1'
       @early_disposition = true
+    end
+    if params[:transferred_assets] == '1'
+      @transferred_assets = true
     end
 
     # If the asset type and subtypes are not set we default to the asset base class
@@ -486,10 +500,10 @@ class AssetsController < AssetAwareController
     clauses = []
     values = []
     unless @org_id == 0
-      clauses << ['organization_id = ?']
+      clauses << ['assets.organization_id = ?']
       values << @org_id
     else
-      clauses << ['organization_id IN (?)']
+      clauses << ['assets.organization_id IN (?)']
       values << @organization_list
     end
 
@@ -550,6 +564,13 @@ class AssetsController < AssetAwareController
     unless @asset_type == 0
       clauses << ['assets.asset_type_id = ?']
       values << [@asset_type]
+    end
+
+    if @transferred_assets
+      clauses << ['assets.service_status_type_id IS NULL']
+      clauses << ['assets.asset_tag = assets.object_key']
+    else
+      clauses << ['assets.asset_tag != assets.object_key']
     end
 
     unless @spatial_filter.blank?
@@ -638,7 +659,8 @@ class AssetsController < AssetAwareController
     unless params[:cancel].blank?
       @asset = get_selected_asset(true)
       if @asset.nil?
-        redirect_to inventory_index_url
+        notify_user(:alert, 'Record not found!')
+        redirect_to(root_url)
       else
         redirect_to inventory_url(@asset)
       end
