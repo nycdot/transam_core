@@ -78,6 +78,20 @@ class OrganizationAwareController < TransamController
   end
 
 
+  def set_current_user_organization_filter_(user, filter)
+    Rails.logger.debug "Setting agency filter to: #{filter}"
+
+    # Set the session variable to store the list of organizations for reporting
+    set_selected_organization_list(filter.get_organizations)
+
+    # Save the selection. Next time the user logs in the filter will be reset
+    user.user_organization_filter = filter
+    user.save
+
+    # Set the filter name in the session
+    session[:user_organization_filter] = filter.name
+  end
+
   def get_typed_organization(org)
 
     class_name = org.organization_type.class_name

@@ -32,14 +32,8 @@ class UsersController < OrganizationAwareController
     conditions  = []
     values      = []
 
-    # See if we got an organization id
-    if @organization_id > 0
-      conditions << 'organization_id = ?'
-      values << @organization_id
-    else
-      conditions << 'organization_id IN (?)'
-      values << @organization_list
-    end
+    conditions << 'organization_id IN (?)'
+    values << @organization_list
 
     unless @search_text.blank?
       # get the list of searchable fields from the asset class
@@ -81,8 +75,8 @@ class UsersController < OrganizationAwareController
     end
 
     # Set the breadcrumbs
-    if @organization_id > 0
-      org = Organization.find(@organization_id)
+    if @organization_list.count == 1
+      org = Organization.find(@organization_list.first)
       add_breadcrumb org.short_name, users_path(:organization_id => org.id)
     end
     if @role.present?
@@ -206,12 +200,22 @@ class UsersController < OrganizationAwareController
     new_user_service = get_new_user_service
     # Create the user
     @user = new_user_service.build(form_params)
-    @user.organization = @organization unless @user.organization # allow for mass-assignment of organization
 
-    add_breadcrumb 'New'
+    if @user.organization.nil?
+      @user.organization_id = @organization_list.first
+      org_list = @organization_list
+    else
+      org_list = form_params[:organization_ids].split(',')
+    end
 
     respond_to do |format|
       if @user.save
+
+        # set organizations
+        # Add the (possibly) new organizations into the object
+        org_list.each do |id|
+          @user.organizations << Organization.find(id)
+        end
 
         # Perform an post-creation tasks such as sending emails, etc.
         new_user_service.post_process @user
@@ -246,6 +250,17 @@ class UsersController < OrganizationAwareController
 
     respond_to do |format|
       if @user.update_attributes(form_params)
+
+
+        # Add the (possibly) new organizations into the object
+        org_list = form_params[:organization_ids].split(',')
+        if org_list.count > 0
+          # clear the existing list of organizations
+          @user.organizations.clear
+          org_list.each do |id|
+            @user.organizations << Organization.find(id)
+          end
+        end
 
         #-----------------------------------------------------------------------
         # Assign the role and privileges but only on a profile form, not a

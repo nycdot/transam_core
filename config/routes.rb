@@ -113,6 +113,7 @@ Rails.application.routes.draw do
     collection do
       post :keyword
       get  :keyword
+      get  :reset
     end
   end
   resources :reports,       :only => [:index, :show] do
@@ -202,6 +203,7 @@ Rails.application.routes.draw do
   # Add user organization filters
     resources :user_organization_filters do
       get 'use'
+      post 'set_org'
     end
   end
 

@@ -4,9 +4,10 @@ namespace :transam_core_data do
 
   desc "add super manager role"
   task add_super_manager_role: :environment do
-    if Role.find_by(name: 'super_manager').nil?
-      Role.create(name: 'super_manager', weight: 10, privilege: false)
-    end
+    r = Role.find_or_initialize_by(name: 'super_manager')
+    r.weight = 10
+    r.privilege = true
+    r.save!
   end
 
   desc "Add event type for EarlyDispositionRequestUpdateEvent"
