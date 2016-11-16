@@ -138,7 +138,6 @@ class UsersController < OrganizationAwareController
     add_breadcrumb 'New'
 
     @user = User.new
-    @user.organization = @organization
 
     respond_to do |format|
       format.html # new.html.haml this had been an erb and is now an haml the change should just be caught
@@ -199,7 +198,7 @@ class UsersController < OrganizationAwareController
     # new users
     new_user_service = get_new_user_service
     # Create the user
-    @user = new_user_service.build(form_params)
+    @user = new_user_service.build(form_params.except(:organization_ids))
 
     if @user.organization.nil?
       @user.organization_id = @organization_list.first
@@ -212,10 +211,7 @@ class UsersController < OrganizationAwareController
       if @user.save
 
         # set organizations
-        # Add the (possibly) new organizations into the object
-        org_list.each do |id|
-          @user.organizations << Organization.find(id)
-        end
+        @user.organizations = Organization.where(id: org_list)
 
         # Perform an post-creation tasks such as sending emails, etc.
         new_user_service.post_process @user
@@ -249,17 +245,21 @@ class UsersController < OrganizationAwareController
     Rails.logger.debug "role_id = #{role_id}, privilege_ids = #{privilege_ids}"
 
     respond_to do |format|
-      if @user.update_attributes(form_params)
+      if @user.update_attributes(form_params.except(:organization_ids))
 
 
         # Add the (possibly) new organizations into the object
-        org_list = form_params[:organization_ids].split(',')
-        if org_list.count > 0
-          # clear the existing list of organizations
-          @user.organizations.clear
-          org_list.each do |id|
-            @user.organizations << Organization.find(id)
-          end
+        if form_params[:organization_ids].present?
+          org_list = form_params[:organization_ids].split(',')
+          @user.organizations = Organization.where(id: org_list)
+        end
+
+        # update filters
+        # set all filters to personal not shared one
+        # then run method that checks your main org and org list to get all shared filters
+        if ActiveRecord::Base.connection.table_exists?(:user_organization_filters)
+          @user.user_organization_filters = UserOrganizationFilter.joins(:users).where(created_by_user_id: current_user.id).sorted.group('user_organization_filters.id').having( 'count( user_id ) = 1' )
+          @user.update_user_organization_filters
         end
 
         #-----------------------------------------------------------------------
@@ -358,9 +358,14 @@ class UsersController < OrganizationAwareController
   # Callbacks to share common setup or constraints between actions.
   #-----------------------------------------------------------------------------
   def set_user
-    @user = User.find_by_object_key(params[:id])
+    @user = User.find_by_object_key(params[:id], :organization_id => @organization_list)
     if @user.nil?
-      redirect_to '/404'
+      if User.find_by(:object_key => params[:id], :organization_id => current_user.user_organization_filters.system_filters.first.get_organizations.map{|x| x.id}).nil?
+        redirect_to '/404'
+      else
+        notify_user(:warning, 'This record is outside your filter. Change your filter if you want to access it.')
+        redirect_to users_path
+      end
       return
     end
   end

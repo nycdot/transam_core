@@ -7,7 +7,7 @@ class UserOrganizationFilter < ActiveRecord::Base
   after_initialize :set_defaults
 
   # Clean up any HABTM associations before the asset is destroyed
-  before_destroy { :clean_habtm_relationships }
+  #before_destroy { :clean_habtm_relationships }
 
   belongs_to :resource, :polymorphic => true
 
@@ -70,6 +70,14 @@ class UserOrganizationFilter < ActiveRecord::Base
 
   def get_organizations
     self.query_string.present? ? Organization.find_by_sql(self.query_string) : self.organizations
+  end
+
+  def can_update? user
+    !self.system_filter? && (self.users.include? user)
+  end
+
+  def can_destroy? user
+    !self.system_filter? && (self.users.include? user) && self != user.user_organization_filter
   end
 
   #------------------------------------------------------------------------------

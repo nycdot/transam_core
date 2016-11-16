@@ -44,7 +44,12 @@ class UserOrganizationFiltersController < OrganizationAwareController
 
     set_current_user_organization_filter_(current_user, @user_organization_filter)
 
-    redirect_to :back
+    # if currently on a filter detail page direct to detail page of filter just set
+    if URI(request.referer).path =~ /\/users\/[[:alnum:]]{12}\/user_organization_filters\/[[:alnum:]]{12}/
+      redirect_to user_user_organization_filter_path(current_user, @user_organization_filter)
+    else
+      redirect_to :back
+    end
 
   end
 
@@ -108,9 +113,16 @@ class UserOrganizationFiltersController < OrganizationAwareController
 
     # Add the organizations into the object. Make sure that the elements are unique so
     # the same org is not added more than once.
-    org_list = form_params[:organization_ids].split(',').uniq
-    org_list.each do |id|
-      @user_organization_filter.organizations << Organization.find(id)
+    if params[:query].to_i > 0
+      @user_organization_filter.query_string = QueryParam.find(params[:query].to_i).try(:query_string)
+    else
+      @user_organization_filter.query_string = nil
+      if form_params[:organization_ids].present?
+        org_list = form_params[:organization_ids].split(',').uniq
+        org_list.each do |id|
+          @user_organization_filter.organizations << Organization.find(id)
+        end
+      end
     end
 
     respond_to do |format|
@@ -139,24 +151,39 @@ class UserOrganizationFiltersController < OrganizationAwareController
       redirect_to :back
     end
 
-    if params[:share_filter]
-      @user_organization_filter.users = current_user.organization.users
-      @user_organization_filter.resource = current_user.organization
-    else
-      @user_organization_filter.users = [current_user]
-      @user_organization_filter.resource = nil
-    end
-
-    # clear the existing list of organizations
-    @user_organization_filter.organizations.clear
-    # Add the (possibly) new organizations into the object
-    org_list = form_params[:organization_ids].split(',')
-    org_list.each do |id|
-      @user_organization_filter.organizations << Organization.find(id)
-    end
-
     respond_to do |format|
-      if @user_organization_filter.update(form_params)
+      if @user_organization_filter.update(form_params.except(:organization_ids))
+
+        # Add the (possibly) new organizations into the object
+        if params[:query].to_i > 0
+          # clear the existing list of organizations
+          @user_organization_filter.organizations.clear
+
+          @user_organization_filter.query_string = QueryParam.find(params[:query].to_i).try(:query_string)
+        else
+          @user_organization_filter.query_string = nil
+          if form_params[:organization_ids].present?
+            org_list = form_params[:organization_ids].split(',')
+            if org_list.count > 0
+              # clear the existing list of organizations
+              @user_organization_filter.organizations.clear
+              org_list.each do |id|
+                @user_organization_filter.organizations << Organization.find(id)
+              end
+            end
+          end
+        end
+
+        @user_organization_filter.save
+
+        if params[:share_filter]
+          @user_organization_filter.users = current_user.organization.users
+          @user_organization_filter.resource = current_user.organization
+        else
+          @user_organization_filter.users = [current_user]
+          @user_organization_filter.resource = nil
+        end
+
 
         if params[:commit] == "Update and Select This Filter"
           set_current_user_organization_filter_(current_user, @user_organization_filter)

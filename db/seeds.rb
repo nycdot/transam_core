@@ -139,7 +139,7 @@ roles = [
   {:privilege => false, :name => 'user', :weight => 1},
   {:privilege => false, :name => 'manager', :weight => 7},
   {:privilege => true, :name => 'admin'},
-
+  {:privilege => true, :name => 'super_manager', :weight => 10},
   {:privilege => true, :name => 'technical_contact'}
 
 ]
@@ -157,11 +157,23 @@ frequency_types = [
   {:active => 1, :name => 'month', :description => 'Month'}
 ]
 
+activities = [
+    { name: 'Weekly Issues Report',
+      description: 'Report giving an admin a list of all issues.',
+      show_in_dashboard: false,
+      system_activity: true,
+      frequency_quantity: 1,
+      frequency_type_id: 4,
+      execution_time: 'Monday 00:01',
+      job_name: 'IssuesReportJob',
+      active: true }
+]
+
 
 lookup_tables = %w{asset_event_types condition_types disposition_types cost_calculation_types license_types priority_types
   file_content_types file_status_types report_types service_status_types
   service_life_calculation_types condition_estimation_types
-  issue_status_types issue_types web_browser_types replacement_reason_types roles notice_types frequency_types
+  issue_status_types issue_types web_browser_types replacement_reason_types roles notice_types frequency_types activities
   }
 
 lookup_tables.each do |table_name|
