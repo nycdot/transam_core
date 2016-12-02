@@ -12,6 +12,7 @@ class UsersController < OrganizationAwareController
   #-----------------------------------------------------------------------------
   before_action :set_user, :only => [:show, :edit, :settings, :update, :destroy, :change_password, :update_password, :profile_photo, :reset_password]
   before_filter :check_for_cancel, :only => [:create, :update, :update_password]
+  before_action :check_filter,     :only => [:edit]
 
   #-----------------------------------------------------------------------------
   INDEX_KEY_LIST_VAR    = "user_key_list_cache_var"
@@ -358,7 +359,7 @@ class UsersController < OrganizationAwareController
   # Callbacks to share common setup or constraints between actions.
   #-----------------------------------------------------------------------------
   def set_user
-    @user = User.find_by_object_key(params[:id], :organization_id => @organization_list)
+    @user = User.find_by(:object_key => params[:id], :organization_id => @organization_list)
     if @user.nil?
       if User.find_by(:object_key => params[:id], :organization_id => current_user.user_organization_filters.system_filters.first.get_organizations.map{|x| x.id}).nil?
         redirect_to '/404'
