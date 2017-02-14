@@ -314,11 +314,7 @@ class User < ActiveRecord::Base
     #-----------------------------------------------------------------------------
 
     def role
-      if roles.count > 1
-        return roles[1][:name]
-      else
-        return 'user'
-      end
+      self.primary_role[:name]
     end
 
     #-----------------------------------------------------------------------------
