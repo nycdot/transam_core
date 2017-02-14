@@ -314,11 +314,11 @@ class User < ActiveRecord::Base
     #-----------------------------------------------------------------------------
 
     def role
-        roles.each do |role|
-            unless role.id == 2
-                return role.name
-            end
-        end
+      if roles.count > 1
+        return roles[1][:name]
+      else
+        return 'user'
+      end
     end
 
     #-----------------------------------------------------------------------------
