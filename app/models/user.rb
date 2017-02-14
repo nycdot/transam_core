@@ -315,9 +315,7 @@ class User < ActiveRecord::Base
 
     def role
         roles.each do |role|
-            if role.id == 1
-                return 'No Roles assigned'
-            else
+            unless role.id == 2
                 return role.name
             end
         end
