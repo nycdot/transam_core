@@ -32,7 +32,7 @@ class ImagesController < NestedResourceController
       return
     end
     # read the attachment
-    content = open(@image.image.url, "User-Agent" => "Ruby/#{RUBY_VERSION}") {|f| f.read}
+    content = open(@image.image.url)
     # Send to the client
     send_data content, :filename => @image.original_filename
 
@@ -44,7 +44,7 @@ class ImagesController < NestedResourceController
     @imagable = find_resource
     @image = @imagable.images.build(form_params)
     @image.creator = current_user
-    
+
     respond_to do |format|
       if @image.save
         notify_user(:notice, 'Image was successfully created.')
