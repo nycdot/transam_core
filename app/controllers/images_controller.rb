@@ -32,7 +32,7 @@ class ImagesController < NestedResourceController
       return
     end
     # read the attachment
-    content = open(@image.image.url)
+    content = open(@image.image.url, "User-Agent" => "Ruby/#{RUBY_VERSION}") {|f| f.read}
     # Send to the client
     send_data content, :filename => @image.original_filename
 
