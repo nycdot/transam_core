@@ -69,6 +69,9 @@ class User < ActiveRecord::Base
   # AssetEvents that have been tagged by the user
   has_many    :asset_events,  :foreign_key => :created_by_id
 
+  #
+  has_many    :saved_searches
+
   #-----------------------------------------------------------------------------
   # Transients
   #-----------------------------------------------------------------------------
@@ -149,6 +152,30 @@ class User < ActiveRecord::Base
 
   def self.allowable_params
     FORM_PARAMS
+  end
+
+  # set default widgets and the column they are in. these can be customized at the app level
+  def self.dashboard_widgets
+    return Rails.application.config.dashboard_widgets if Rails.application.config.try(:dashboard_widgets)
+
+    widgets = []
+    SystemConfig.transam_module_names.each do |mod|
+      view_component = "#{mod}_widget"
+      widgets << [view_component, 2]
+    end
+    widgets += [
+        ['assets_widget', 1],
+        ['activities_widget', 1],
+        ['queues', 1],
+        ['users_widget', 1],
+        ['notices_widget', 3],
+        ['search_widget', 3],
+        ['message_queues', 3],
+        ['task_queues', 3]
+    ]
+
+    return widgets
+
   end
 
   #-----------------------------------------------------------------------------
@@ -250,6 +277,8 @@ class User < ActiveRecord::Base
   end
 
   def update_user_organization_filters
+    self.user_organization_filters = UserOrganizationFilter.joins(:users).where(created_by_user_id: self.id).sorted.group('user_organization_filters.id').having( 'count( user_id ) = 1' )
+
     UserOrganizationFilter.where('resource_type IS NOT NULL').each do |filter|
       puts self.try(filter.resource_type.downcase.pluralize).include? filter.resource
       puts self.organizations.inspect

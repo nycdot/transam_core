@@ -10,6 +10,12 @@ Rails.application.routes.draw do
     get code, :to => "errors#show", :code => code
   end
 
+  #-----------------------------------------------------------------------------
+  # Landing page for checking the health of the system, used mostly as a heartbeat
+  # checker for the system overall
+  #-----------------------------------------------------------------------------
+  get 'system_health_check', to: 'errors#system_health'
+
   # Routes for the issues controller
   resources :issues,    :only => [:create, :update, :edit, :new] do
     member do
@@ -39,6 +45,8 @@ Rails.application.routes.draw do
         get 'new_asset'
         get 'export'
         get 'parent'
+        post 'fire_asset_event_workflow_events'
+        get 'get_summary'
       end
       member do
         get 'tag'
@@ -81,7 +89,7 @@ Rails.application.routes.draw do
     resources :images
   end
 
-  resources :organizations, :path => "org", :only => [:index, :show, :edit, :update]
+  resources :organizations, :path => "org"
 
   resources :tasks,       :only => [:index, :show, :create, :update, :edit, :new, :destroy] do
     resources :comments
@@ -116,6 +124,13 @@ Rails.application.routes.draw do
       get  :reset
     end
   end
+
+  resources :saved_searches do
+    member do
+      get 'reorder'
+    end
+  end
+
   resources :reports,       :only => [:index, :show] do
     member do
       get 'load'  # load a report using ajax
@@ -146,6 +161,13 @@ Rails.application.routes.draw do
       get   'change_password'
       patch 'update_password'
       get   'profile_photo'
+      get 'authorizations'
+      get 'popup'
+    end
+
+    resources :user_organization_filters do
+      get 'use'
+      post 'set_org'
     end
 
     resources :images
@@ -198,13 +220,5 @@ Rails.application.routes.draw do
 
   # default root for the site -- will be /org/:organization_id/dashboards
   root :to => 'dashboards#index'
-
-  resources :users, only: [] do
-  # Add user organization filters
-    resources :user_organization_filters do
-      get 'use'
-      post 'set_org'
-    end
-  end
 
 end

@@ -15,10 +15,9 @@ puts "======= Processing TransAM CORE Lookup Tables  ======="
 
 asset_event_types = [
   {:active => 1, :name => 'Condition',       :display_icon_name => "fa fa-star-half-o",       :description => 'Condition',       :class_name => 'ConditionUpdateEvent',      :job_name => 'AssetConditionUpdateJob'},
-  {:active => 1, :name => 'Maintenance provider type',       :display_icon_name => "fa fa-cog",       :description => 'Maintenance Provider',       :class_name => 'MaintenanceProviderUpdateEvent',      :job_name => 'AssetMaintenanceProviderUpdateJob'},
-  {:active => 1, :name => 'Schedule replacement',       :display_icon_name => "fa fa-refresh",       :description => 'Scheduled replacement',       :class_name => 'ScheduleReplacementUpdateEvent',      :job_name => 'AssetScheduleReplacementUpdateJob'},
-  {:active => 1, :name => 'Schedule rehabilitation',       :display_icon_name => "fa fa-wrench",       :description => 'Scheduled rehabilitation',       :class_name => 'ScheduleRehabilitationUpdateEvent',      :job_name => 'AssetScheduleRehabilitationUpdateJob'},
-  {:active => 1, :name => 'Schedule disposition',       :display_icon_name => "fa fa-times-circle",       :description => 'Scheduled disposition',       :class_name => 'ScheduleDispositionUpdateEvent',      :job_name => 'AssetScheduleDispositionUpdateJob'},
+  {:active => 0, :name => 'Schedule replacement',       :display_icon_name => "fa fa-refresh",       :description => 'Scheduled replacement',       :class_name => 'ScheduleReplacementUpdateEvent',      :job_name => 'AssetScheduleReplacementUpdateJob'},
+  {:active => 0, :name => 'Schedule rehabilitation',       :display_icon_name => "fa fa-wrench",       :description => 'Scheduled rehabilitation',       :class_name => 'ScheduleRehabilitationUpdateEvent',      :job_name => 'AssetScheduleRehabilitationUpdateJob'},
+  {:active => 0, :name => 'Schedule disposition',       :display_icon_name => "fa fa-times-circle",       :description => 'Scheduled disposition',       :class_name => 'ScheduleDispositionUpdateEvent',      :job_name => 'AssetScheduleDispositionUpdateJob'},
   {:active => 1, :name => 'Service status',  :display_icon_name => "fa fa-bell",  :description => 'Service Status Update',  :class_name => 'ServiceStatusUpdateEvent',  :job_name => 'AssetServiceStatusUpdateJob'},
   {:active => 1, :name => 'Location',       :display_icon_name => "fa fa-map-marker",       :description => 'Location Update',       :class_name => 'LocationUpdateEvent',      :job_name => 'AssetLocationUpdateJob'},
   {:active => 1, :name => 'Rehabilitation',       :display_icon_name => "fa fa-wrench",       :description => 'Rehabilitation Update',       :class_name => 'RehabilitationUpdateEvent',      :job_name => 'AssetRehabilitationUpdateJob'},
@@ -157,6 +156,11 @@ frequency_types = [
   {:active => 1, :name => 'month', :description => 'Month'}
 ]
 
+search_types = [
+  {:active => 1, :name => 'Asset', :class_name => 'AssetSearcher'},
+  {:active => 1, :name => 'Capital Plan', :class_name => 'CapitalProjectSearcher'}
+]
+
 activities = [
     { name: 'Weekly Issues Report',
       description: 'Report giving an admin a list of all issues.',
@@ -173,7 +177,7 @@ activities = [
 lookup_tables = %w{asset_event_types condition_types disposition_types cost_calculation_types license_types priority_types
   file_content_types file_status_types report_types service_status_types
   service_life_calculation_types condition_estimation_types
-  issue_status_types issue_types web_browser_types replacement_reason_types roles notice_types frequency_types activities
+  issue_status_types issue_types web_browser_types replacement_reason_types roles notice_types frequency_types search_types activities
   }
 
 lookup_tables.each do |table_name|

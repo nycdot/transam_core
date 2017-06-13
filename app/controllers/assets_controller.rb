@@ -60,6 +60,35 @@ class AssetsController < AssetAwareController
     end
   end
 
+  def get_summary
+    asset_type_id = params[:asset_type_id]
+
+    if asset_type_id.blank?
+      results = ActiveRecord::Base.connection.exec_query(Asset.operational.select('organization_id, asset_subtypes.asset_type_id, organizations.short_name AS org_short_name, asset_types.name AS subtype_name, COUNT(*) AS assets_count, SUM(purchase_cost) AS sum_purchase_cost, SUM(book_value) AS sum_book_value').joins(:organization, asset_subtype: :asset_type).where(organization_id: @organization_list).group(:organization_id, :asset_type_id).to_sql)
+
+      level = 'type'
+
+    else
+      asset_subtype_ids = AssetType.includes(:asset_subtypes).find_by(id: asset_type_id).asset_subtypes.ids
+
+      results = ActiveRecord::Base.connection.exec_query(Asset.operational.select('organization_id, asset_subtype_id, organizations.short_name AS org_short_name, asset_subtypes.name AS subtype_name, COUNT(*) AS assets_count, SUM(purchase_cost) AS sum_purchase_cost, SUM(book_value) AS sum_book_value').joins(:organization, :asset_subtype).where(organization_id: (params[:org] || @organization_list), asset_subtype_id: asset_subtype_ids).group(:organization_id, :asset_subtype_id).to_sql)
+
+      level = 'subtype'
+    end
+
+    respond_to do |format|
+      format.js {
+        if params[:org]
+          render partial: 'dashboards/assets_widget_table_rows', locals: {results: results, level: level }
+        else
+          render partial: 'dashboards/assets_widget_table', locals: {results: results, level: level }
+        end
+      }
+    end
+  end
+
+
+
   # renders either a table or map view of a selected list of assets
   #
   # Parameters include asset_type, asset_subtype, id_list, box, or search_text
@@ -96,6 +125,9 @@ class AssetsController < AssetAwareController
     # check that an order param was provided otherwise use asset_tag as the default
     params[:sort] ||= 'asset_tag'
 
+    # fix sorting on organizations to be alphabetical not by index
+    params[:sort] = 'organizations.short_name' if params[:sort] == 'organization_id'
+
     unless @fmt == 'xls'
       # cache the set of asset ids in case we need them later
       cache_list(@assets.order("#{params[:sort]} #{params[:order]}"), INDEX_KEY_LIST_VAR)
@@ -114,6 +146,42 @@ class AssetsController < AssetAwareController
     end
   end
 
+
+  def fire_asset_event_workflow_events
+
+    event_name = params[:event]
+    asset_event_type = AssetEventType.find_by(id: params[:asset_event_type_id])
+
+    if asset_event_type && params[:targets]
+
+      notification_enabled = asset_event_type.class_name.constantize.workflow_notification_enabled?
+
+      events = asset_event_type.class_name.constantize.where(object_key: params[:targets].split(','))
+
+      failed = 0
+      events.each do |evt|
+
+        if evt.fire_state_event(event_name)
+          workflow_event = WorkflowEvent.new
+          workflow_event.creator = current_user
+          workflow_event.accountable = evt
+          workflow_event.event_type = event_name
+          workflow_event.save
+
+          if notification_enabled
+            evt.notify_event_by(current_user, event_name)
+          end
+
+        else
+          failed += 1
+        end
+      end
+
+    end
+
+    redirect_to :back
+  end
+
   # makes a copy of an asset and renders it. The new asset is not saved
   # and has any identifying chracteristics identified as CLEANSABLE_FIELDS are nilled
   def copy
@@ -126,7 +194,7 @@ class AssetsController < AssetAwareController
     # create a copy of the asset and null out all the fields that are identified as cleansable
     new_asset = @asset.copy(true)
 
-    notify_user(:notice, "Asset #{@asset.name} was successfully copied.")
+    notify_user(:notice, "Complete the master record to copy Asset #{@asset.name}.")
 
     @asset = new_asset
 
@@ -192,9 +260,10 @@ class AssetsController < AssetAwareController
     add_breadcrumb @asset.name, inventory_path(@asset)
     add_breadcrumb "Modify", edit_inventory_path(@asset)
 
-    # tranferred assets need to remove notification if exists
+    # transfered assets need to remove notification if exists
     if @asset.asset_tag == @asset.object_key
-      Notification.where(notifiable_type: 'Asset', notifiable_id: @asset.id).first.update(active:false)
+      notification = Notification.where("text = 'A new asset has been transferred to you. Please update the asset.' AND link LIKE ?" , "%#{@asset.object_key}%").first
+      notification.update(active: false) if notification.present?
     end
 
     respond_to do |format|

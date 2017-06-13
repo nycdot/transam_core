@@ -16,7 +16,10 @@
   :export_types => "['csv', 'txt', 'excel']",
   :show_export => 'true',
   :show_columns => 'true',
-  :show_toggle => 'true'}}
+  :show_toggle => 'true',
+  :state_save => 'true',
+  :state_save_id_table => "usersid",
+  :state_save_expire => "1y"}}
   %thead
     %tr
       %th.left{:data => {:visible => 'false'}} Object Key
@@ -30,8 +33,9 @@
       %th.left{:data => {:visible => 'false', :sortable => 'true'}} Timezone
       %th.center{:data => {:visible => 'false', :sortable => 'true'}} Send Emails
       %th.right{:data => {:visible => 'false', :sortable => 'true'}} Table Rows
+      %th.left{:data => {:sortable => 'true'}} Role
+      %th.left{:data => {:sortable => 'true'}} Privileges
       - if current_user.has_role? :admin
-        %th.left{:data => {:sortable => 'true'}} Roles
         %th.right{:data => {:sortable => 'true'}} Num Logins
         %th.right{:data => {:sortable => 'true'}} Last Login
         %th.left.nowrap{:data => {:visible => 'false', :sortable => 'true'}} Last Login IP
@@ -43,20 +47,21 @@
 
   %tbody
     - @users.each do |u|
-      %tr{ :class => 'action-path' }
+      %tr{ :id => u.object_key, :class => 'action-path' }
         %td= u.object_key
         %td= u.external_id
         %td= link_to( u.organization.to_s, organization_path(u.organization.short_name))
         %td= u.title
-        %td= link_to u.first_name, user_path(u)
+        %td= u.first_name
         %td= u.last_name
         %td= u.email
         %td= format_as_phone_number(u.phone)
         %td= u.timezone
         %td= format_as_boolean(u.notify_via_email)
         %td= format_as_integer(u.num_table_rows)
+        %td= u.roles.roles.last.label
+        %td= format_as_list(u.roles.privileges.collect{|x| x.label})
         - if current_user.has_role? :admin
-          %td= format_as_list(u.roles.map{|r| r.label})
           %td= format_as_integer(u.sign_in_count)
           %td= format_as_date_time(u.last_sign_in_at)
           %td= u.last_sign_in_ip

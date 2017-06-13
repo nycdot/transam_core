@@ -1,7 +1,12 @@
-%ul.nav.navbar-nav.navbar-collapse
+%ul.nav.navbar-nav.collapse.navbar-collapse
+  :javascript
+    $('.navbar-fixed-top ul.navbar-collapse').addClass('hide-during-load');
   %li{:class => get_nav_link_class('dashboards') }
     = link_to dashboards_path, title: 'Home' do
       %i.fa.fa-home.fa-2x
+
+  = render 'shared/inventory_nav'
+  = render 'shared/policy_nav'
 
   -# render the engine main nav components if there are any
   - SystemConfig.transam_module_names.each do |mod|
@@ -16,9 +21,5 @@
   - if lookup_context.template_exists?(view_component, 'shared', true)
     = render :partial => "shared/#{view_component}"
 
-  = render 'shared/forms_nav'
   = render 'shared/reports_nav'
   = render 'shared/notifications_nav'
-
-
-  = render 'shared/settings_nav'

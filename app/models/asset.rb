@@ -46,9 +46,6 @@ class Asset < ActiveRecord::Base
   # each asset has a single asset subtype
   belongs_to  :asset_subtype
 
-  # each asset has a single maintenance provider type
-  belongs_to  :maintenance_provider_type
-
   # each asset has a reason why it is being replaced
   belongs_to  :replacement_reason_type
 
@@ -176,6 +173,7 @@ class Asset < ActiveRecord::Base
   scope :operational, -> { where('assets.disposition_date IS NULL AND assets.asset_tag != assets.object_key') }
   # Returns a list of asset that operational and are marked as being in service
   scope :in_service,  -> { where('assets.disposition_date IS NULL AND assets.service_status_type_id = 1')}
+
   # Returns a list of asset that in early replacement
   scope :early_replacement, -> { where('policy_replacement_year is not NULL and scheduled_replacement_year is not NULL and scheduled_replacement_year < policy_replacement_year') }
   #-----------------------------------------------------------------------------
@@ -481,7 +479,7 @@ class Asset < ActiveRecord::Base
     return false if disposed?
     # otherwise check the policy year and see if it is less than or equal to
     # the current planning year
-    return false if estimated_replacement_year.blank?
+    return false if policy_replacement_year.blank?
 
     if policy_replacement_year <= current_planning_year_year
       # After ESL disposal
@@ -502,7 +500,7 @@ class Asset < ActiveRecord::Base
     return false if disposed?
     # otherwise check the policy year and see if it is less than or equal to
     # the current planning year
-    return false if estimated_replacement_year.blank?
+    return false if policy_replacement_year.blank?
 
     if policy_replacement_year <= current_planning_year_year
       # Eligible for after ESL disposal
@@ -519,6 +517,10 @@ class Asset < ActiveRecord::Base
   # (this method is needed to show the reason in asset table)
   def early_disposition_notes
     early_disposition_requests.active.last.try(:comments) || ""
+  end
+
+ def replacement_by_policy?
+    true # all assets in core are in replacement cycle. To plan and/or make exceptions to normal schedule, see CPT.
   end
 
   # Returns true if an asset is scheduled for disposition
@@ -642,7 +644,7 @@ class Asset < ActiveRecord::Base
 
   # returns the list of events associated with this asset ordered by date, newest first
   def history
-    AssetEvent.unscoped.where('asset_id = ?', id).order('event_date DESC')
+    AssetEvent.unscoped.where('asset_id = ?', id).order('event_date DESC, created_at DESC')
   end
 
   def estimated_rehabilitation_cost(on_date = Date.today)
@@ -1055,8 +1057,10 @@ class Asset < ActiveRecord::Base
   def before_update_callback
 
     Rails.logger.debug "In before_save_callback"
-    # Get the policy analyzer
 
+    return unless self.replacement_by_policy?
+
+    # Get the policy analyzer
     this_policy_analyzer = self.policy_analyzer
 
     # If the policy replacement year changes we need to check to see if the asset
@@ -1126,6 +1130,9 @@ class Asset < ActiveRecord::Base
 
   # updates the calculated values of an asset
   def update_asset_state(save_asset = true, policy = nil)
+
+    return unless self.replacement_by_policy?
+
     Rails.logger.debug "Updating SOGR for asset = #{object_key}"
 
     if disposed?

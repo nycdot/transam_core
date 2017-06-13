@@ -2,6 +2,7 @@
   .early-replacement-asset {
     color: red !important;
   }
+
 - unless asset.scheduled_replacement_year.blank?
   - if asset.is_early_replacement?
     = format_field("Scheduled Year", format_as_fiscal_year(asset.scheduled_replacement_year), "#{asset.formatted_early_replacement_reason}", 'fa fa-exclamation-triangle early-replacement-asset', "Early Replacement")

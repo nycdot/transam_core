@@ -3,20 +3,22 @@ class UsersController < OrganizationAwareController
   #-----------------------------------------------------------------------------
   # Protect controller methods using the cancan ability
   #-----------------------------------------------------------------------------
-  authorize_resource
+  authorize_resource :user
 
   #-----------------------------------------------------------------------------
   add_breadcrumb "Home",  :root_path
   add_breadcrumb "Users", :users_path
 
   #-----------------------------------------------------------------------------
-  before_action :set_user, :only => [:show, :edit, :settings, :update, :destroy, :change_password, :update_password, :profile_photo, :reset_password]
+  before_action :set_user, :only => [:show, :edit, :settings, :update, :destroy, :change_password, :update_password, :profile_photo, :reset_password, :authorizations]
   before_filter :check_for_cancel, :only => [:create, :update, :update_password]
-  before_action :check_filter,     :only => [:edit]
+  before_action :check_filter,     :only => [:authorizations]
 
   #-----------------------------------------------------------------------------
   INDEX_KEY_LIST_VAR    = "user_key_list_cache_var"
   SESSION_VIEW_TYPE_VAR = 'users_subnav_view_type'
+
+  FILTERS_IGNORED = Rails.application.config.try(:user_organization_filters_ignored).present?
 
   #-----------------------------------------------------------------------------
   # GET /users
@@ -154,6 +156,11 @@ class UsersController < OrganizationAwareController
 
   end
 
+  def authorizations
+    add_breadcrumb @user, user_path(@user)
+    add_breadcrumb 'Update', authorizations_user_path(@user)
+  end
+
   #-----------------------------------------------------------------------------
   # Sends a reset password email to the user. This is an admin function
   #-----------------------------------------------------------------------------
@@ -258,8 +265,7 @@ class UsersController < OrganizationAwareController
         # update filters
         # set all filters to personal not shared one
         # then run method that checks your main org and org list to get all shared filters
-        if ActiveRecord::Base.connection.table_exists?(:user_organization_filters)
-          @user.user_organization_filters = UserOrganizationFilter.joins(:users).where(created_by_user_id: current_user.id).sorted.group('user_organization_filters.id').having( 'count( user_id ) = 1' )
+        unless FILTERS_IGNORED
           @user.update_user_organization_filters
         end
 
@@ -333,6 +339,10 @@ class UsersController < OrganizationAwareController
     add_breadcrumb 'Profile Photo'
   end
 
+  def popup
+    @user = User.find_by_object_key(params[:id])
+  end
+
   #------------------------------------------------------------------------------
   # Protected Methods
   #------------------------------------------------------------------------------
@@ -359,16 +369,30 @@ class UsersController < OrganizationAwareController
   # Callbacks to share common setup or constraints between actions.
   #-----------------------------------------------------------------------------
   def set_user
-    @user = User.find_by(:object_key => params[:id], :organization_id => @organization_list)
-    if @user.nil?
-      if User.find_by(:object_key => params[:id], :organization_id => current_user.user_organization_filters.system_filters.first.get_organizations.map{|x| x.id}).nil?
+
+    if params[:id] == current_user.object_key
+      @user = User.find_by(:object_key => params[:id])
+    elsif FILTERS_IGNORED
+      @user = User.find_by(:object_key => params[:id])
+
+      if @user.nil?
         redirect_to '/404'
-      else
-        notify_user(:warning, 'This record is outside your filter. Change your filter if you want to access it.')
-        redirect_to users_path
       end
-      return
+    else
+      @user = User.find_by(:object_key => params[:id], :organization_id => @organization_list)
+
+      if @user.nil?
+        if User.find_by(:object_key => params[:id], :organization_id => current_user.user_organization_filters.system_filters.first.get_organizations.map{|x| x.id}).nil?
+          redirect_to '/404'
+        else
+          notify_user(:warning, 'This record is outside your filter. Change your filter if you want to access it.')
+          redirect_to users_path
+        end
+      end
+
     end
+
+    return
   end
 
   #-----------------------------------------------------------------------------

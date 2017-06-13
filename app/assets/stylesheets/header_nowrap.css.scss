@@ -1,0 +1,69 @@
+// Smooth header appearance
+
+.navbar-fixed-top .collapse {
+
+  div.pull-right .navbar-form {
+    margin-top: 10px;
+    width: 200px;
+  }
+}
+
+.navbar-fixed-top .collapsing {
+  ul.pull-right > li > a {
+    padding-top: 15px;
+    padding-bottom: 14px;
+  }
+
+  div.pull-right .navbar-form {
+    margin-top: 10px;
+    width: 200px;
+  }
+}
+
+button.navbar-toggle {
+  margin-top: 8px;
+  margin-bottom: 7px;
+}
+
+// Hide header while loading
+
+.hide-during-load {
+  position: absolute !important;
+  margin-top: -340px !important;
+
+  div.pull-right {
+    width: auto !important;
+
+    .navbar-form {
+      margin-left: -5px !important;
+      margin-right: -5px !important;
+    }
+  }
+}
+
+// Style elements that determine when Font Awesome icons have loaded
+
+#wait-for-fa-wrapper {
+  visibility: hidden;
+  position: absolute;
+  overflow: hidden;
+}
+
+#wait-for-fa-content {
+  position: relative;
+  white-space: nowrap;
+}
+
+@media (min-width: 767.001px) {
+  #keyword_search_div {
+    position: absolute;
+    padding-top: 5px;
+    right: 340px;
+  }
+}
+
+@media (max-width: 767px) {
+  #keyword_search_div {
+    position: static;
+  }
+}
