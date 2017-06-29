@@ -55,6 +55,11 @@ class ReportsController < OrganizationAwareController
     end
   end
 
+  #------------------------------------------------------------------------------
+  #
+  # Protected Methods
+  #
+  #------------------------------------------------------------------------------
   protected
 
   # Simply calling super in a subclassed show method doesn't work because of the respond_to
@@ -74,23 +79,16 @@ class ReportsController < OrganizationAwareController
       @report_view = @report.view_name
       add_breadcrumb @report.name
 
-      report_instance = @report.class_name.constantize.new(params)
+      @report_instance = @report.class_name.constantize.new(params)
       # inject the sql for the report into the params
       params[:sql] = @report.custom_sql unless @report.custom_sql.blank?
       # get the report data
-      @data = report_instance.get_data(@organization_list, params)
+      @data = @report_instance.get_data(@organization_list, params)
 
       yield
     end
   end
   
-  #------------------------------------------------------------------------------
-  #
-  # Private Methods
-  #
-  #------------------------------------------------------------------------------
-  private
-
   # Returns the selected report
   def get_report
     # load this report and create the report instance
