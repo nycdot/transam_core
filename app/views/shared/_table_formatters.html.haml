@@ -10,7 +10,17 @@
     } else {
       return '<div style = "visibility: hidden;">No</div>';
     }
-  };
+  }
+
+  // above boolean_formatter converts to integer, this doesn't
+  function raw_boolean_formatter(value) {
+    if (value) {
+      // hidden div for exporting
+      return '<i class="fa fa-check"></i><div style = "visibility: hidden;">Yes</div>';
+    } else {
+      return '<div style = "visibility: hidden;">No</div>';
+    }
+  }
 
   function integer_formatter(value) {
     if (value == null) {
@@ -18,7 +28,7 @@
     } else {
       return format("###,##0.", value);
     }
-  };
+  }
 
   function currency_formatter(value) {
     if (value == null) {
@@ -26,7 +36,7 @@
     } else {
       return '$' + integer_formatter(value);
     }
-  };
+  }
 
   function percentage_formatter(value) {
     if (value == null) {
@@ -34,20 +44,23 @@
     } else {
       return format("##0.00", value) + "%";
     }
-  };
+  }
 
   function date_formatter(value) {
     if (value) {
-      //console.log(value);
-      var date = new Date(value);
-      //console.log(date);
-      var local_date = convertUTCDateToLocalDate(date);
-      //console.log(local_date);
-      return local_date.getMonth() + 1 + "/" + local_date.getDate() + "/" + local_date.getFullYear();
+      return moment(value).format('M/D/YYYY');
     } else {
       return value;
     }
-  };
+  }
+
+  function date_time_formatter(value) {
+    if (value) {
+      return moment(value).format('MM/DD/YYYY hh:mm:ss A');
+    } else {
+      return value;
+    }
+  }
 
   function convertUTCDateToLocalDate(date) {
       var newDate = new Date(date.getTime()+date.getTimezoneOffset()*60*1000);
@@ -58,7 +71,9 @@
       newDate.setHours(hours - offset);
 
       return newDate;
-  };
+  }
+
+  //Bellow are new formatters to this _table_formatters class before they were duplicated across 2 or more tables.
 
   function tagged_formatter(value) {
     if (value == '1') {
@@ -70,9 +85,10 @@
 
   function tasks_formatter(value) {
     if (value > 0) {
-      return '<i class="fa fa-flag"></i>';
+      return '<i class="fa fa-flag"></i><div style = "visibility: hidden;">Yes</div>';
+    } else {
+      return '<div style = "visibility: hidden;">No</div>';
     }
-    return "";
   };
 
   function documents_formatter(value) {
@@ -94,4 +110,168 @@
       return '<i class="fa fa-image"></i>';
     }
     return "";
+  };
+
+  function ali_fiscal_year_formatter(value) {
+    return format_as_fiscal_year(value);
+  };
+
+  function popup_formatter_for_date_name(value, data) {
+    return '<a class="transam-popover" id="' + data.object_key + '" data-container="body" data-content="" data-html="true" data-placement="left" data-title="' + data.asset_tag + '" data-toggle="popover" tabindex="0"><i class="fa fa-info-circle fa-1-25x text-info"></i></a>';
+  }
+
+  function popup_formatter(value, data) {
+    if(value) {
+    return '<a class="transam-popover" data-container="body" data-content="' + value + '" data-html="true" data-placement="left" data-title="' + data.project_number + ': Activity Line Items" data-toggle="popover" tabindex="0" data-original-title="" title=""><i class="fa fa-info-circle fa-1-25x text-info"></i></a>';
+    } else {
+      return "";
+    }
+  }
+
+  function replace_with_subtype_formatter(value, data) {
+    if (value) {
+      return value;
+    } else if (data) {
+      return data.asset_subtype
+    } else {
+      return "";
+    }
+  }
+
+  function replace_with_fuel_type_formatter(value, data) {
+    if (value) {
+      return value;
+    } else if (data) {
+      return data.fuel_type
+    } else {
+      return "";
+    }
+  }
+
+  function special_icons_formatter(value, data) {
+    var special_icons = '';
+    if (data.is_rehabilitated) {
+      special_icons = special_icons + '<a class="transam-tooltip" data-placement="top" data-title="Rehabilitated" data-toggle="tooltip" tabindex="0" data-original-title="" title=""><i class="fa fa-wrench" style="color: maroon !important;"></i></a>';
+    }
+
+    if (data.is_early_replacement) {
+      special_icons = special_icons + '<a class="transam-popover" data-placement="left" data-toggle="popover" tabindex="0" data-html="true" data-container="body" title="Early Replacement" data-content="<p>' + data.formatted_early_replacement_reason + '</p>"><i class="fa fa-exclamation-triangle text-danger"></i></a>';
+    }
+
+    if((data.replace_with_subtype) && (data.replace_with_subtype != data.asset_subtype_id)) {
+      special_icons = special_icons + '<a class="transam-tooltip" data-placement="top" data-title="Replaced Asset Subtype" data-toggle="tooltip" tabindex="0" data-original-title="" title=""><i class="fa fa-retweet" style="color: green !important;"></i></a>';
+    }
+
+    if((data.replace_with_fuel_type) && (data.replace_with_fuel_type != data.fuel_type)) {
+      special_icons = special_icons + '<a class="transam-tooltip" data-placement="top" data-title="Replaced Fuel Type" data-toggle="tooltip" tabindex="0" data-original-title="" title=""><i class="fa fa-car" style="color: orange !important;"></i></a>';
+    }
+
+    return special_icons;
+  }
+
+  function early_replacement_flag_formatter(value) {
+    if(value) {
+      return '<a class="transam-tooltip" data-placement="left" data-title="Contains early replacement assets" data-toggle="tooltip" tabindex="0" data-original-title="" title=""><i class="fa fa-exclamation-triangle text-danger"></i></a>';
+    } else {
+      return "";
+    }
+  }
+
+  //TODO this could be moved into the _table_formatter lets double check that assumption
+  function total_cost_formatter(value) {
+    return '#{format_as_currency(@total_projects_cost)}';
+  }
+
+  function description_formatter(value, data) {
+    if (value) {
+      if (is_rehabilitation) {
+        str = "Rehabilitation";
+      } else {
+        str = "Replacement";
+      }
+      return str + " for " + data.asset_subtype + " " + data.fuel_type + " " + value + " replaced in " + data.scheduled_replacement_year;
+    } else {
+      return "";
+    }
+  };
+
+  function pcnt_formatter(value) {
+    if (value == "") {
+      return value;
+    } else {
+      return format("##0.000", value) + "%";
+    }
+  };
+
+  function asset_record_link_formatter(value, data) {
+    return "<a href='/inventory/" + data.transam_asset_object_key + "'>" + value + "</a>"
+  };
+
+  function asset_view_manufacturer(value, data){
+    if (data.transam_asset_manufacturer_name == "Other (Describe)")
+      return data.transam_asset_other_manufacturer
+    else
+      return data.transam_asset_manufacturer_code + ' - ' + data.transam_asset_manufacturer_name
+  };
+
+  function asset_view_model (value, data) {
+    if(data.transam_asset_manufacturer_model_name == "Other")
+      return data.transam_asset_other_manufacturer_model
+    else
+      return data.transam_asset_manufacturer_model_name
+  };
+
+  function asset_view_status(value, data) {
+    if(data.service_status_event_id)
+      return 'No Service Status Event Recorded'
+    else
+      return data.most_recent_service_status_event_service_status_type_name
+  };
+
+   function asset_view_direct_capital_responsibility(value, data) {
+    if(data.transit_asset_pcnt_capital_responsibility)
+      return "Yes"
+    else
+      return "No"
+  };
+
+  function asset_view_age(value, data) {
+
+  };
+
+  function asset_view_useful_life_benchmark(value, data) {
+
+  };
+
+  function asset_view_useful_life_benchmark_adjusted(value, data) {
+
+  };
+
+  function asset_view_replacemet_status(value, data) {
+    if (data.most_recent_early_replacement_event_replacement_status_type_name)
+      return data.most_recent_early_replacement_event_replacement_status_type_name
+    else
+      return 'By Policy'
+  };
+
+  function asset_view_length_unit(value, data) {
+    if (data.service_vehicle_vehicle_length_unit === 'foot') {
+      return 'feet';
+    } else if (data.service_vehicle_vehicle_length_unit === 'inch') {
+      return 'inches';
+    } else {
+      return data.service_vehicle_vehicle_length_unit;
+    }
+  };
+
+  function asset_view_funding_type(value, data) {
+    return data.fta_funding_type_name + ' (' + data.fta_funding_type_code + ')'
+  };
+
+  function asset_view_ownership_type(value, data) {
+    return data.fta_ownership_type_name + ' (' + data.fta_ownership_type_code + ')'
+  };
+
+  function asset_view_service_type(value, data) {
+    return data.primary_fta_service_type_code + ' - ' + data.primary_fta_service_type_name
   };

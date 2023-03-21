@@ -1,4 +1,7 @@
-#
+# --------------------------------
+# # DEPRECATED see TTPLAT-1832 or https://wiki.camsys.com/pages/viewpage.action?pageId=51183790
+# --------------------------------
+# #
 # Schedule Disposition update event. This is event type is required for
 # all implementations
 #
@@ -46,6 +49,13 @@ class ScheduleDispositionUpdateEvent < AssetEvent
   # This must be overriden otherwise a stack error will occur  
   def get_update
     "Scheduled for disposition in #{fiscal_year(disposition_year)}"
+  end
+
+  ######## API Serializer ##############
+  def api_json(options={})
+    super.merge({
+      disposition_year: disposition_year
+    })
   end
   
   protected

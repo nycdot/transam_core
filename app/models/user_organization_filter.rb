@@ -5,6 +5,7 @@ class UserOrganizationFilter < ActiveRecord::Base
 
   # Callbacks
   after_initialize :set_defaults
+  before_destroy   :reset_users_using_filter
 
   # Clean up any HABTM associations before the asset is destroyed
   #before_destroy { :clean_habtm_relationships }
@@ -12,31 +13,31 @@ class UserOrganizationFilter < ActiveRecord::Base
   belongs_to :resource, :polymorphic => true
 
   # Each filter is created by someone usually the owner but sometimes the system user (could be extended to sharing filters)
-  belongs_to :creator, :class_name => "User", :foreign_key => :created_by_user_id
+  belongs_to :creator, -> { unscope(where: :active) }, :class_name => "User", :foreign_key => :created_by_user_id
 
   # Each filter can have a list of organizations that are included
   has_and_belongs_to_many :organizations, :join_table => 'user_organization_filters_organizations'
 
   has_and_belongs_to_many :users, :join_table => 'users_user_organization_filters'
 
-  validates   :name,          :presence => :true
-  validates   :description,   :presence => :true
+  validates   :name,          :presence => true
+  validates   :description,   :presence => true
   #validate    :require_at_least_one_organization
 
   # Allow selection of active instances
   scope :active, -> { where(:active => true) }
   # sorting rule: 1. first sort ASC based on sort_order; 2. for those without sort_order, sort by name ASC
-  scope :sorted, -> { order('sort_order IS NULL, sort_order ASC', :name) }
+  scope :sorted, -> { order(Arel.sql('sort_order IS NULL, sort_order ASC'), :name) }
 
   # Named Scopes
-  scope :system_filters, -> { where('created_by_user_id = ? AND active = ?', 1, 1 ) }
-  scope :other_filters, -> { where('created_by_user_id > ? AND active = ?', 1, 1 ) }
+  scope :system_filters, -> { where(created_by_user_id: 1, active: 1) }
+  scope :other_filters, -> { where.not(created_by_user_id: 1).where(active: 1) }
 
   # List of allowable form param hash keys
   FORM_PARAMS = [
     :name,
     :description,
-    :organization_ids
+    :organization_ids => []
   ]
 
   #------------------------------------------------------------------------------
@@ -65,7 +66,7 @@ class UserOrganizationFilter < ActiveRecord::Base
   end
 
   def get_organizations
-    self.query_string.present? ? Organization.find_by_sql(self.query_string) : self.organizations
+    self.query_string.present? ? Organization.find_by_sql(self.query_string + (self.query_string.include?('ORDER BY') ? '' : ' ORDER BY `organizations`.`organization_type_id` ASC, `organizations`.`short_name` ASC')) : self.organizations
   end
 
   def can_update? user
@@ -99,6 +100,15 @@ class UserOrganizationFilter < ActiveRecord::Base
   # Set resonable defaults for a new filter
   def set_defaults
     self.active = self.active.nil? ? true : self.active
+  end
+
+  def reset_users_using_filter
+    User.where(user_organization_filter_id: self.id).each do |user|
+      user.update(user_organization_filter_id: user.user_organization_filters.system_filters.sorted.first.try(:id))
+    end
+
+    self.users.clear
+
   end
 
 

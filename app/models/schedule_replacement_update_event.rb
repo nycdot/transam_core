@@ -1,4 +1,8 @@
+# --------------------------------
+# # DEPRECATED see TTPLAT-1832 or https://wiki.camsys.com/pages/viewpage.action?pageId=51183790
+# --------------------------------
 #
+# #
 # Schedule Replacement update event. This is event type is required for
 # all implementations
 #
@@ -10,7 +14,7 @@ class ScheduleReplacementUpdateEvent < AssetEvent
   # Associations
   belongs_to  :replacement_reason_type      
         
-  validates :replacement_year,  :numericality => {:only_integer => :true,   :greater_than_or_equal_to => Date.today.year - 10}, :allow_nil => true
+  validates :replacement_year, :presence => true,  :numericality => {:only_integer => true,   :greater_than_or_equal_to => Date.today.year - 10}
   validates :replacement_reason_type,  :presence => true
       
   #------------------------------------------------------------------------------
@@ -50,7 +54,15 @@ class ScheduleReplacementUpdateEvent < AssetEvent
   def get_update
     "Scheduled for replacement in #{fiscal_year(replacement_year)}. Reason: #{replacement_reason_type}."
   end
-  
+
+  ######## API Serializer ##############
+  def api_json(options={})
+    super.merge({
+      replacement_year: replacement_year,
+      replacement_reason_type: replacement_reason_type.api_json(options)
+    })
+  end
+
   protected
 
   # Set resonable defaults for a new condition update event

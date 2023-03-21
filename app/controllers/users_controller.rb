@@ -3,16 +3,21 @@ class UsersController < OrganizationAwareController
   #-----------------------------------------------------------------------------
   # Protect controller methods using the cancan ability
   #-----------------------------------------------------------------------------
-  authorize_resource :user
+  authorize_resource :user, except: [:popup, :table_preferences, :update_table_preferences, :table]
 
   #-----------------------------------------------------------------------------
   add_breadcrumb "Home",  :root_path
   add_breadcrumb "Users", :users_path
 
   #-----------------------------------------------------------------------------
+  skip_before_action :get_organization_selections,      :only => [:new, :authorizations]
+  before_action :set_viewable_organizations,      :only => [:new, :authorizations]
+
+
   before_action :set_user, :only => [:show, :edit, :settings, :update, :destroy, :change_password, :update_password, :profile_photo, :reset_password, :authorizations]
-  before_filter :check_for_cancel, :only => [:create, :update, :update_password]
-  before_action :check_filter,     :only => [:authorizations]
+  before_action :check_for_cancel, :only => [:create, :update, :update_password]
+
+
 
   #-----------------------------------------------------------------------------
   INDEX_KEY_LIST_VAR    = "user_key_list_cache_var"
@@ -28,19 +33,25 @@ class UsersController < OrganizationAwareController
 
     @organization_id = params[:organization_id].to_i
     @search_text = params[:search_text]
-    @role = params[:role]
+    @role = params[:role].split(",") if params[:role]
     @id_filter_list = params[:ids]
 
     # Start to set up the query
     conditions  = []
     values      = []
 
-    conditions << 'organization_id IN (?)'
-    values << @organization_list
+    if @organization_id.to_i > 0
+      conditions << 'users_organizations.organization_id = ?'
+      values << @organization_id
+    else
+      conditions << 'users_organizations.organization_id IN (?)'
+      values << @organization_list
+    end
+
 
     unless @search_text.blank?
       # get the list of searchable fields from the asset class
-      searchable_fields = User.new.user_searchable_fields
+      searchable_fields = User.new.searchable_fields
       # create an OR query for each field
       query_str = []
       first = true
@@ -55,10 +66,10 @@ class UsersController < OrganizationAwareController
           query_str << ' OR '
         end
 
-        query_str << field
+        query_str << "UPPER(users.#{field})"
         query_str << ' LIKE ? '
         # add the value in for this sub clause
-        values << search_value
+        values << search_value.upcase
       end
       query_str << ')' unless searchable_fields.empty?
 
@@ -70,11 +81,43 @@ class UsersController < OrganizationAwareController
       values << @id_filter_list
     end
 
-    # Get the Users but check to see if a role was selected
-    if @role.blank?
-      @users = User.active.where(conditions.join(' AND '), *values).order(:organization_id, :last_name)
+    if params[:show_active_only].nil?
+      @show_active_only = 'active'
     else
-      @users = User.active.with_role(@role).where(conditions.join(' AND '), *values).order(:organization_id, :last_name)
+      @show_active_only = params[:show_active_only]
+    end
+
+    if @show_active_only == 'active'
+      conditions << 'users.active = ?'
+      values << true
+    elsif @show_active_only == 'inactive'
+      conditions << 'users.active = ?'
+      values << false
+    end
+
+    # Get the Users but check to see if a role was selected
+    @users = User.unscoped.distinct.joins(:organization).order('organizations.organization_type_id', 'organizations.short_name', :last_name).joins(:organizations).includes(:organization,:roles).where(conditions.join(' AND '), *values)
+
+    unless @role.blank?
+      all_users = @users
+      @users = @users.with_role(@role[0])
+      @role[1..-1].each do |r|
+        @users = @users.or(all_users.with_role(r))
+      end
+    end
+
+    if params[:sort] && params[:order]
+      case params[:sort]
+      when 'organization'
+        @users = @users.reorder("organizations.short_name #{params[:order]}")
+      # figure out sorting by role + privilege some other way
+      # when 'role_name'
+      #   @users = @users.joins(:roles).merge(Role.unscoped.order(name: params[:order]))
+      # when 'privilege_names'
+      #   @users = @users.joins(:roles).merge(Role.order(privilege: params[:order]))
+      else
+        @users = @users.reorder(params[:sort] => params[:order])
+      end
     end
 
     # Set the breadcrumbs
@@ -83,20 +126,135 @@ class UsersController < OrganizationAwareController
       add_breadcrumb org.short_name, users_path(:organization_id => org.id)
     end
     if @role.present?
-      add_breadcrumb @role.titleize, users_path(:role => @role)
+      role_string = @role.kind_of?(Array) ? Role.find_by(name: @role).try(:label).try(:parameterize).try(:underscore) : @role
+      add_breadcrumb role_string.titleize, users_path(:role => role_string) if role_string
     end
-
-    # cache the set of object keys in case we need them later
-    cache_list(@users, INDEX_KEY_LIST_VAR)
 
     # remember the view type
     @view_type = get_view_type(SESSION_VIEW_TYPE_VAR)
 
     respond_to do |format|
       format.html # index.html.erb
-      format.json { render :json => @users }
+      # format.json {
+      #   render :json => {
+      #     :total => @users.count,
+      #     :rows => @users.limit(params[:limit]).offset(params[:offset]).collect{ |u|
+      #       u.as_json.merge!({
+      #            organization_short_name: u.organization.short_name,
+      #            organization_name: u.organization.name,
+      #            role_name: !@role.blank? && (@role.kind_of?(Array) ? !Role.find_by(name:@role.first).privilege : !Role.find_by(name: @role).privilege) ? (@role.kind_of?(Array) ? u.roles.roles.where(name: @role).last.label : u.roles.roles.find_by(name: @role).label) : u.roles.roles.last.label,
+      #            privilege_names: u.roles.privileges.collect{|x| x.label}.join(', '),
+      #            all_orgs: u.organizations.map{ |o| o.to_s }.join(', ')
+      #       })
+      #     }
+      #   }
+      # }
+
     end
   end
+
+  #-----------------------------------------------------------------------------
+  # Show the list of current sessions. Only available for admin users
+  # TODO: MOST of this will be moved to a shareable module
+  #-----------------------------------------------------------------------------
+  def table
+
+    ### Get the default set of users ###
+    users = join_builder
+
+    ### Pluck out the Params ###
+    page = (table_params[:page] || 0).to_i
+    page_size = (table_params[:page_size] || users.count).to_i
+    role = params[:role]
+    search = (table_params[:search])
+    offset = page*page_size
+    sort_column = params[:sort_column]
+    sort_order = params[:sort_order]
+    columns = params[:columns]
+
+    organization_id = [params[:organization_id].to_i] & @organization_list
+
+    ### Update SORT and COLUMNS Preferences ###
+    if sort_column.present? || columns.present?
+      current_user.update_table_prefs(:users, sort_column, sort_order, columns)
+    end
+
+    ### Search ###
+    if search.present?
+      searchable_columns = [:first_name, :last_name, :phone, :phone_ext, :email, :title, :external_id] 
+      search_string = "%#{search}%"
+      query = query_builder(searchable_columns, search_string)
+      case search.downcase
+      when 'active'
+        query = query.or(User.arel_table[:active].eq(true))
+      when 'inactive'
+        query = query.or(User.arel_table[:active].eq(false))
+      end
+      users = users.where(query)
+
+      ####### Get users who match search on role
+      ##users_on_role = (role_query search_string).pluck(:id)
+      ######## Search on every column (except role)
+      ##all_user_table = User.joins(:organization).joins(:roles).where(query).pluck(:id)
+      ######### Take the union of the above searches
+      ##users = User.where(id: [users_on_role + all_user_table].uniq)
+    end
+
+    ### Filter ###
+    if role.present?
+      users = users.joins(:roles).where({roles: {name: role.split(',')}}).distinct
+    end
+
+    # Handle org list
+    unless organization_id.empty?
+      users = users.where(organization_id: organization_id)
+    else
+      users = users.where(organization: @organization_list)
+    end
+    
+    ### SORT ###
+    users = users.order(current_user.table_sort_string :users)
+
+    ### Rowify Everything ###
+    column_prefs = current_user.column_preferences :users
+    user_table = users.offset(offset).limit(page_size).map{ |u| u.rowify column_prefs}
+    render status: 200, json: {count: users.count, rows: user_table}
+  end
+
+  def join_builder
+    User.unscoped.distinct.joins(:organization).joins(:organizations)
+      #.joins(:roles)
+      #.joins('left join max_user_roles_and_labels on users.id=max_user_roles_and_labels.user_id')
+  end
+
+  def query_builder searchable_columns, search_string
+    user_query_builder(searchable_columns, search_string)
+      .or(org_query search_string)
+      #.or(privilege_query search_string)
+      #.or(role_query search_string)
+  end
+
+  def user_query_builder atts, search_string
+    if atts.count <= 1
+      return User.joins(:organziation).arel_table[atts.pop].matches(search_string)
+    else
+      return User.joins(:organization).arel_table[atts.pop].matches(search_string).or(user_query_builder(atts, search_string))
+    end
+  end
+
+  def role_query search_string
+    q =  "max_user_roles_and_labels.role_label like '#{search_string}'"
+    User.joins('left join max_user_roles_and_labels on users.id=max_user_roles_and_labels.user_id').where(q)
+  end
+
+  def org_query search_string 
+    Organization.arel_table[:name].matches(search_string).or(Organization.arel_table[:short_name].matches(search_string))
+  end
+
+  def privilege_query search_string 
+    Role.where(privilege: true).arel_table[:label].matches(search_string)
+  end
+
 
   #-----------------------------------------------------------------------------
   # Show the list of current sessions. Only available for admin users
@@ -105,6 +263,7 @@ class UsersController < OrganizationAwareController
 
     key = "000000:#{TransamController::ACTIVE_SESSION_LIST_CACHE_VAR}"
     @sessions =  Rails.cache.fetch(key)
+    @sessions.delete_if { |key, value| value[:expire_time] < Time.now }
     @sessions ||= {}
 
   end
@@ -167,6 +326,22 @@ class UsersController < OrganizationAwareController
   def reset_password
 
     @user.send_reset_password_instructions
+
+    system_user = User.where(first_name: 'system', last_name: 'user').first
+    message_template = MessageTemplate.find_by(name: 'User2')
+    message_body =  MessageTemplateMessageGenerator.new.generate(message_template,[@user.name, "<a href='#'>Change my password</a>"]).html_safe
+
+    msg               = Message.new
+    msg.user          = system_user
+    msg.organization  = system_user.organization
+    msg.to_user       = @user
+    msg.subject       = message_template.subject
+    msg.body          = message_body
+    msg.priority_type = message_template.priority_type
+    msg.message_template = message_template
+    msg.active     = message_template.active
+    msg.save
+
     notify_user(:notice, "Instructions for resetting their password was sent to #{@user} at #{@user.email}")
 
     redirect_to user_path(@user)
@@ -212,7 +387,7 @@ class UsersController < OrganizationAwareController
       @user.organization_id = @organization_list.first
       org_list = @organization_list
     else
-      org_list = form_params[:organization_ids].split(',')
+      org_list = form_params[:organization_ids]
     end
 
     respond_to do |format|
@@ -221,13 +396,13 @@ class UsersController < OrganizationAwareController
         # set organizations
         @user.organizations = Organization.where(id: org_list)
 
-        # Perform an post-creation tasks such as sending emails, etc.
-        new_user_service.post_process @user
-
         # Assign the role and privileges
         role_service = get_user_role_service
         role_service.set_roles_and_privileges @user, current_user, role_id, privilege_ids
         role_service.post_process @user
+
+        # Perform an post-creation tasks such as sending emails, etc.
+        new_user_service.post_process @user
 
         notify_user(:notice, "User #{@user.name} was successfully created.")
         format.html { redirect_to user_url(@user) }
@@ -253,21 +428,7 @@ class UsersController < OrganizationAwareController
     Rails.logger.debug "role_id = #{role_id}, privilege_ids = #{privilege_ids}"
 
     respond_to do |format|
-      if @user.update_attributes(form_params.except(:organization_ids))
-
-
-        # Add the (possibly) new organizations into the object
-        if form_params[:organization_ids].present?
-          org_list = form_params[:organization_ids].split(',')
-          @user.organizations = Organization.where(id: org_list)
-        end
-
-        # update filters
-        # set all filters to personal not shared one
-        # then run method that checks your main org and org list to get all shared filters
-        unless FILTERS_IGNORED
-          @user.update_user_organization_filters
-        end
+      if @user.update_attributes(form_params)
 
         #-----------------------------------------------------------------------
         # Assign the role and privileges but only on a profile form, not a
@@ -278,6 +439,10 @@ class UsersController < OrganizationAwareController
           role_service.set_roles_and_privileges @user, current_user, role_id, privilege_ids
           role_service.post_process @user
         end
+
+        new_user_service = get_new_user_service
+        # Perform an post-creation tasks such as sending emails, etc.
+        new_user_service.post_process @user, true
         
         if @user.id == current_user.id
           notify_user(:notice, "Your profile was successfully updated.")
@@ -323,10 +488,18 @@ class UsersController < OrganizationAwareController
   #-----------------------------------------------------------------------------
   #-----------------------------------------------------------------------------
   def destroy
-    @user.active = false
-    @user.save(:validate => :false)
+    if @user.active
+      @user.active = false
+      @user.notify_via_email = false
+      activation = "deactivated"
+    else
+      @user.active = true
+      @user.notify_via_email = true
+      activation = "reactivated"
+    end
+    @user.save(:validate => false)
     respond_to do |format|
-      notify_user(:notice, "User #{@user} has been deactivated.")
+      notify_user(:notice, "User #{@user} has been #{activation}.")
       format.html { redirect_to user_url(@user) }
       format.json { head :no_content }
     end
@@ -343,10 +516,48 @@ class UsersController < OrganizationAwareController
     @user = User.find_by_object_key(params[:id])
   end
 
+  def table_preferences
+    table_code = params[:table_code] || nil
+    render status: 200, json: current_user.table_preferences(table_code)
+  end 
+
+  #TODO Update to new Format
+  def update_table_preferences
+    table_code = table_preference_params[:table_code]
+    sort_params = table_preference_params[:sort]
+    table_prefs = eval(current_user.table_preferences || "{}")
+    
+    #Turn all the keys and values from string to sym
+    keyed_params = []
+    sort_params.each do |kp|
+      kp.each do |k,v|
+        new_hash = {}
+        new_hash[k.to_sym] = v.to_sym
+        keyed_params << new_hash 
+      end
+    end
+
+    sort_params = {sort: keyed_params}
+    table_prefs[table_code.to_sym] = sort_params
+    current_user.update(table_prefs: table_prefs)
+
+    render status: 200, json: current_user.table_preferences(table_code)
+  end 
+
   #------------------------------------------------------------------------------
   # Protected Methods
   #------------------------------------------------------------------------------
   protected
+
+  def set_viewable_organizations
+    if current_user.has_role? :admin
+      @viewable_organizations = Organization.ids
+    else
+      @viewable_organizations = current_user.viewable_organizations.select{|org| can?(:authorize, org)}.map(&:id)
+    end
+
+    get_organization_selections
+  end
 
 
   #------------------------------------------------------------------------------
@@ -365,6 +576,15 @@ class UsersController < OrganizationAwareController
     params.require(:user).permit(user_allowable_params)
   end
 
+  def table_params
+    params.permit(:page, :page_size, :search, :sort_column, :sort_order)
+  end
+
+  def table_preference_params
+    request.parameters[:table_preferences]
+    #params.permit(:table_code, sort: [:column, :order])
+  end
+
   #-----------------------------------------------------------------------------
   # Callbacks to share common setup or constraints between actions.
   #-----------------------------------------------------------------------------
@@ -373,13 +593,13 @@ class UsersController < OrganizationAwareController
     if params[:id] == current_user.object_key
       @user = User.find_by(:object_key => params[:id])
     elsif FILTERS_IGNORED
-      @user = User.find_by(:object_key => params[:id])
+      @user = User.unscoped.find_by(:object_key => params[:id])
 
       if @user.nil?
         redirect_to '/404'
       end
     else
-      @user = User.find_by(:object_key => params[:id], :organization_id => @organization_list)
+      @user = User.unscoped.find_by(:object_key => params[:id], :organization_id => @organization_list)
 
       if @user.nil?
         if User.find_by(:object_key => params[:id], :organization_id => current_user.user_organization_filters.system_filters.first.get_organizations.map{|x| x.id}).nil?
@@ -394,6 +614,8 @@ class UsersController < OrganizationAwareController
 
     return
   end
+
+
 
   #-----------------------------------------------------------------------------
   def add_user_breadcrumb(page)

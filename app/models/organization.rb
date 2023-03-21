@@ -53,6 +53,9 @@ class Organization < ActiveRecord::Base
   validates :customer_id,           :presence => true
   validates :organization_type_id,  :presence => true
 
+  # Executive Director: Currently used to specify Oversight Contact
+  belongs_to :executive_director, class_name: "User"
+
   #------------------------------------------------------------------------------
   # Attributes common to all organization types
   #------------------------------------------------------------------------------
@@ -67,6 +70,11 @@ class Organization < ActiveRecord::Base
   validates :phone,                 :presence => true
   validates :url,                   :presence => true
 
+  # ---------------------------------------------------------------------
+  # Scopes
+  # --------------------------------------------------------------------
+  default_scope { order(:organization_type_id, :short_name) }
+
   # List of allowable form param hash keys
   FORM_PARAMS = [
     :customer_id,
@@ -74,16 +82,21 @@ class Organization < ActiveRecord::Base
     :external_id,
     :license_holder,
     :name,
+    :legal_name,
     :short_name,
+    :country,
     :address1,
     :address2,
     :city,
     :state,
     :zip,
+    :county,
     :phone,
     :fax,
     :url,
-    :active
+    :active,
+    :executive_director_id,
+    :agency_office_address
   ]
 
   #------------------------------------------------------------------------------
@@ -125,6 +138,10 @@ class Organization < ActiveRecord::Base
   # Returns the users in the organiztion with the assigned role
   def users_with_role role_name
     users.with_role role_name
+  end
+
+  def grantor?
+    organization_type.try(:name) == "Grantor"
   end
 
   #-----------------------------------------------------------------------------
@@ -212,6 +229,49 @@ class Organization < ActiveRecord::Base
     a.uniq
   end
 
+  def api_json(options={})
+    {
+      id: id, 
+      name: name, 
+      short_name: short_name,
+      legal_name: legal_name,
+      address1: address1,
+      address2: address2,
+      county: county,
+      city: city,
+      state: state,
+      zip: zip,
+      phone: phone,
+      url: url,
+      latitude: latitude, 
+      longitude: longitude,
+      executive_director: executive_director.try(:api_json),
+      agency_office_address: agency_office_address
+    }
+  end
+
+  #for bulk updates
+  def self.schema_structure
+    {
+      "enum": Organization.all.map { |o| o.try(:id) },
+      "tuple": Organization.all.map{ |x| {"id": x.try(:id), "val": x.to_s} },
+      "type": "string",
+      "title": "Organization",
+      "editable": false,
+    }
+  end
+
+  #------------------------------------------------------------------------------
+  # DotGrants Export
+  #------------------------------------------------------------------------------
+  def dotgrants_json
+    {
+      external_id: external_id,
+      name: name,
+      short_name: short_name
+    }
+  end
+
   #------------------------------------------------------------------------------
   #
   # Protected Methods
@@ -222,7 +282,7 @@ class Organization < ActiveRecord::Base
   # Set resonable defaults for a new organization
   def set_defaults
     self.active = self.active.nil? ? true : self.active
-    self.state ||= SystemConfig.instance.default_state_code
+    self.state ||= SystemConfig.instance.try(:default_state_code)
   end
 
 end

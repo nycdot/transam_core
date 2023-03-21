@@ -17,4 +17,27 @@ class FuelType < ActiveRecord::Base
     "#{code}-#{name}"
   end
 
+  def api_json(options={})
+    as_json(options)
+  end
+
+  def dotgrants_json
+    {
+      id: id,
+      name: name,
+      code: code
+    }
+  end
+
+  # for bulk updates
+  def self.schema_structure
+    {
+      "enum": FuelType.where.not(name: "Other").pluck(:name),
+      "tuple": FuelType.where.not(name: "Other").map{|f| {"id": f.id, "val": f.name } },
+      "type": "string",
+      "title": "Fuel Type",
+      "allowNew": true
+    }
+  end
+
 end

@@ -81,9 +81,9 @@ var transam = new function() {
 					updateTableHeader(true);
 				}
 			}, 220);
-		}
+		};
 		$msg.off('click').on('click', updateTableHeader );
-	}
+	};
 	// Show a popup message in the UI
 	this.show_popup_message = function(title, message, type) {
 		var class_name = 'alert alert-info';
@@ -224,9 +224,8 @@ var transam = new function() {
 	};
 
 	this.enable_date_pickers = function() {
-		// Use jquery to render date pickers for all datepicker input classes
-		$('.datepicker').datepicker({
-			 format: 'mm-dd-yyyy'
+		// Use bootstrap to render date pickers for all datepicker input classes
+		$('.datepicker').bootstrapDP({
 		});
 	};
 
@@ -290,4 +289,28 @@ var transam = new function() {
 	    callback: callback
 	  });
 	};
+
+    this.make_fiscal_year = function(jquery_selector) {
+
+        $(jquery_selector).change(function(){
+            field_to_update = $(this).attr('for');
+
+            // get fiscal year
+            yr_input = parseInt($(this).val());
+            if (yr_input >= 0) {
+                $('#'+field_to_update).val(yr_input);
+                yr_input += 1;
+                $('span[for="'+field_to_update+'"]').text(' - '+ yr_input);
+            } else {
+                $('#'+field_to_update).val('');
+                $('span[for="'+field_to_update+'"]').text(' - YYYY');
+            }
+        });
+
+        $(jquery_selector).each(function(){
+            $(this).change();
+        })
+
+
+    };
 }();

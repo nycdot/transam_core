@@ -17,6 +17,8 @@ class Policy < ActiveRecord::Base
   #------------------------------------------------------------------------------
   after_initialize :set_defaults
 
+  after_save :apply_policy
+
   #------------------------------------------------------------------------------
   # Associations
   #------------------------------------------------------------------------------
@@ -193,5 +195,12 @@ class Policy < ActiveRecord::Base
     self.condition_estimation_type_id ||= 1
     self.condition_threshold ||= 2.5
   end
+
+  def apply_policy
+    TransamAsset.operational.where(organization_id: self.organization_id).each do |asset|
+      Rails.logger.warn "Issue applying policy on TransAM Asset #{asset}" unless asset.save
+    end
+  end
+  handle_asynchronously :apply_policy
 
 end

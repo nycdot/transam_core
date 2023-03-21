@@ -157,6 +157,8 @@ class EarlyDispositionRequestUpdateEvent < AssetEvent
     when :reject, :approve_via_transfer, :approve
       # notify creator
       [creator]
+    else
+     []
     end
 
     recipients || []
@@ -172,6 +174,8 @@ class EarlyDispositionRequestUpdateEvent < AssetEvent
       'approved'
     when :approve_via_transfer
       'approved via transfer'
+    else
+        ''
     end
   end
 
@@ -180,9 +184,10 @@ class EarlyDispositionRequestUpdateEvent < AssetEvent
 
     event_desc = event_in_passive_tense(event)
 
-    event_url = Rails.application.routes.url_helpers.inventory_asset_event_path self.try(:asset), self
+    event_url = Rails.application.routes.url_helpers.inventory_asset_event_path self.try(Rails.application.config.asset_base_class_name.underscore), self
 
-    early_notification = Notification.create(text: "Early disposition request for #{asset.asset_tag} #{event_desc}", link: event_url, notifiable_type: 'Organization', notifiable_id: self.try(:asset).try(:organization_id))
+    early_notification = Notification.create(text: "Early disposition request for #{self.send(Rails.application.config.asset_base_class_name.underscore)} #{event_desc}", link: event_url, notifiable_type: 'Organization', notifiable_id: self.send(Rails.application.config.asset_base_class_name.underscore).organization_id)
+
 
     recipients = if self.respond_to?(:notification_recipients)
       notification_recipients(event)
@@ -205,6 +210,14 @@ class EarlyDispositionRequestUpdateEvent < AssetEvent
         # msg.save
       end
     end
+  end
+
+  ######## API Serializer ##############
+  def api_json(options={})
+    super.merge({
+      comments: comments,
+      document: document
+    })
   end
 
   #------------------------------------------------------------------------------

@@ -15,6 +15,7 @@ class Role < ActiveRecord::Base
   has_many :users, :through => :users_roles
 
   belongs_to :resource, :polymorphic => true
+  belongs_to :role_parent, :class_name => 'Role'
 
   #-----------------------------------------------------------------------------
   # Scopes
@@ -37,12 +38,16 @@ class Role < ActiveRecord::Base
     name
   end
 
-  def label
-    read_attribute(:label) || name.titleize
-  end
-
   def privilege?
     (privilege)
+  end
+
+  def api_json(options={})
+    {
+      name: name, 
+      weight: weight,
+      label: label
+    }
   end
 
 end

@@ -1,0 +1,11 @@
+.multiple-select-row-selected {
+    background: lightBlue
+}
+
+.table-striped tbody tr:nth-child(odd):hover td {
+   background-color: #F9F9F9;
+}
+
+.fixed-table-container tbody .selected td {
+    background: lightBlue;
+}

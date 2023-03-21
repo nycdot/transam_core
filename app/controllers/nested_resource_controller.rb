@@ -13,7 +13,7 @@ class NestedResourceController < OrganizationAwareController
     #puts resource.inspect
     controller_name = resource.class.name.underscore
     #puts controller_name
-    if controller_name == 'asset'
+    if controller_name == Rails.application.config.asset_base_class_name.underscore
       controller_name = 'inventory'
     end
     eval("#{controller_name}_url('#{resource.object_key}')")
@@ -23,10 +23,10 @@ class NestedResourceController < OrganizationAwareController
   # case where the controller is aliased and we need to determine this and replace the correct
   # resource class name
   def find_resource
-    params.reverse_each do |name, value|
+    params.permit!.to_h.reverse_each do |name, value|
       if name =~ /(.+)_id$/
         if $1 == 'inventory'
-          return 'asset'.classify.constantize.find_by_object_key(value)
+          return Rails.application.config.asset_base_class_name.constantize.find_by_object_key(value)
         else
           return $1.classify.constantize.find_by_object_key(value)
         end

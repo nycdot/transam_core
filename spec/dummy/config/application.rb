@@ -10,6 +10,7 @@ require "sprockets/railtie"
 
 Bundler.require(*Rails.groups)
 require "transam_core"
+require TransamCore::Engine.root.join('app/controllers/concerns/json_response_helper.rb').to_s
 
 module Dummy
   class Application < Rails::Application
@@ -23,6 +24,13 @@ module Dummy
     # The default locale is :en and all translations from config/locales/*.rb,yml are auto loaded.
     # config.i18n.load_path += Dir[Rails.root.join('my', 'locales', '*.{rb,yml}').to_s]
     # config.i18n.default_locale = :de
+
+    config.help_directory = (ENV['HELP_PATH'] || "https://camsys.github.io/transam_user_guide/user_guide")
+    config.time_zone = 'Eastern Time (US & Canada)'
+    config.release_notes = 'Release notes (version_number)_All.pdf'
+
+    # Sends back appropriate JSON 400 response if a bad JSON request is sent.
+    config.middleware.insert_before Rack::Head, JsonResponseHelper::CatchJsonParseErrors
   end
 end
 

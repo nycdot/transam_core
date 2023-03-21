@@ -86,16 +86,21 @@ RSpec.describe Organization, :type => :model do
       :external_id,
       :license_holder,
       :name,
+      :legal_name,
       :short_name,
+      :country,
       :address1,
       :address2,
       :city,
       :state,
       :zip,
+      :county,
       :phone,
       :fax,
       :url,
-      :active
+      :active,
+      :executive_director_id,
+      :agency_office_address
     ])
   end
 
@@ -107,6 +112,7 @@ RSpec.describe Organization, :type => :model do
       user_org = create(:organization)
       test_user = create(:technical_contact, :organization => user_org)
       test_user.organizations << user_org
+      test_user.viewable_organizations << user_org
       test_user.save!
 
       expect(user_org.technical_contact).to eq(test_user)
@@ -122,6 +128,7 @@ RSpec.describe Organization, :type => :model do
       user_org = create(:organization)
       test_user = create(:admin, :organization => user_org)
       test_user.organizations << user_org
+      test_user.viewable_organizations << user_org
       test_user.save!
 
       expect(user_org.users_with_role 'admin').to include(test_user)
@@ -186,5 +193,9 @@ RSpec.describe Organization, :type => :model do
   it '.set_defaults' do
     expect(Organization.new.active).to be true
     expect(Organization.new.state).to eq(SystemConfig.instance.default_state_code)
+  end
+
+  it 'responds to api_json' do
+    expect(test_org).to respond_to(:api_json)
   end
 end

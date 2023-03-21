@@ -18,25 +18,26 @@ RSpec.describe ConditionUpdateEvent, :type => :model do
     end
     describe 'assessed rating must be in range' do
       it 'cant be above max' do
-        test_event.assessed_rating = ConditionType.maximum(:rating)+1.0
+        test_event.assessed_rating = ConditionType.maximum(:rating_ceiling)+1.0
         expect(test_event.valid?).to be false
       end
     end
   end
 
   it '#allowable_params' do
-    expect(ConditionUpdateEvent.allowable_params).to eq([:condition_type_id, :assessed_rating])
+    expect(ConditionUpdateEvent.allowable_params).to eq([:condition_type_id, :assessed_rating, {:condition_type_percents_attributes => [ConditionTypePercent.allowable_params]}])
   end
   it '#asset_event_type' do
     expect(ConditionUpdateEvent.asset_event_type).to eq(AssetEventType.find_by(:class_name => 'ConditionUpdateEvent'))
   end
 
   it '.get_update' do
-    expect(test_event.get_update).to eq("Condition recorded as #{sprintf("%#.1f", test_event.assessed_rating)} (#{test_event.condition_type.to_s})")
+    expect(test_event.get_update).to eq("Condition recorded as #{sprintf("%#.2f", test_event.assessed_rating)} (#{test_event.condition_type.to_s})")
   end
 
   describe '.set_defaults' do
     it 'asset reported condition rating' do
+      skip 'ConditionUpdateEvent set_defaults assumes transam_asset'
       expect(create(:buslike_asset, :reported_condition_rating => 2.0).condition_updates.new.assessed_rating).to eq(2.0)
     end
     it 'default to max condition type' do

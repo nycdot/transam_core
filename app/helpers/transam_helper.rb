@@ -20,6 +20,15 @@ module TransamHelper
     get_fiscal_years
   end
 
+  def get_system_asset_starting_year
+    SystemConfig.instance.epoch.year 
+  end
+
+  # return collection of earliest year to current year
+  def get_years_to_date_collection
+    (get_system_asset_starting_year..Date.today.year).to_a
+  end
+
   # Return the version of TransAM core that is running
   def transam_version
     Gem.loaded_specs['transam_core'].version
@@ -31,22 +40,39 @@ module TransamHelper
     APP_VERSION
   end
 
+  # returns application title set in environment, with fallback
   def app_title
     title = ENV["APPLICATION_TITLE"] ? ENV["APPLICATION_TITLE"] : 'TransAM Application'
     return title.html_safe
   end
 
+  # returns credits set in environment, with fallback
   def credits
     credit = ENV["APPLICATION_CREDITS"] ? ENV["APPLICATION_CREDITS"] : 'TransAM Core Asset Management Platform<br/>Configure me in Application.yml'
     return credit.html_safe
   end
 
-  def html_help_path
-    '/user_guide/TransAMUserGuide.html'
+  def html_help_pdf_path(use_admin=false)
+    config = Rails.application.config
+    file = 'TransAMUserGuide.html'
+    if use_admin && config.try(:admin_guide).present?
+      file = config.admin_guide
+    elsif config.try(:user_guide).present?
+      file = config.user_guide
+    end
+    "#{config.help_directory}/#{file}"
   end
 
-  def html_help_pdf_path
-    '/user_guide/CPT_User_Guide.pdf'
+  def html_hsp_pdf_path
+    config = Rails.application.config
+    file = config.hsp_user_guide
+    "#{config.help_directory}/#{file}"
+  end
+
+  def html_release_notes_pdf_path
+    config = Rails.application.config
+    file = config.release_notes.gsub('version_number', config.version.split('-')[0])
+    "#{config.help_directory}/#{file}"
   end
 
   # Returns the correct FontAwesomne icon for a file type based on the
@@ -88,26 +114,28 @@ module TransamHelper
     end
   end
 
-  # Returns the correct icon for a workflow asset
+  # Returns the correct icon for a workflow event
   def get_workflow_event_icon(event_name)
 
     if event_name == 'retract'
       'fa-eject'
     elsif event_name == 'transmit' || event_name == 'submit'
       'fa-share'
-    elsif event_name == 'accept'
+    elsif event_name == 'accept' || event_name == 'authorize'
       'fa-check-square-o'
-    elsif event_name == 'start'
+    elsif event_name == 'start' || event_name == 'publish'
       'fa-play'
-    elsif event_name == 'complete'
+    elsif event_name == 'complete' || event_name == 'close'
       'fa-check-square'
     elsif event_name == 'cancel'
       'fa-stop'
+    elsif event_name == 'not_authorize'
+      'fa-ban'
     elsif event_name == 're_start'
       'fa-play'
     elsif event_name == 'halt'
       'fa-pause'
-    elsif event_name == 'retract'
+    elsif event_name == 'retract' || event_name == 'reopen'
       'fa-reply'
     elsif event_name == 'return' || event_name == 'reject' || event_name == 'unapprove'
       'fa-chevron-circle-left'
@@ -135,6 +163,7 @@ module TransamHelper
     end
   end
 
+  # Maps priority_types to bootstrap text-* classes
   def bootstrap_class_priority_type priority_type
     case priority_type.id
     when 1
@@ -148,22 +177,21 @@ module TransamHelper
     end
   end
 
-  # Returns the list of reports that are displayable in the menu for the
-  # current user
-  def get_user_menu_reports report_type
-    a = []
-    report_type.reports.show_in_nav.each do |rep|
-      if current_user.is_in_roles? rep.role_names
-        a << rep
-      end
-    end
-    a
-  end
-
   # Returns the system user.
   def system_user
     # By convention, the first user is always the system user.
     User.find_by_id(1)
+  end
+
+  # returns a date as an array of elements suitable for creating a new date in javascript
+  def js_date(date)
+    return "" unless date
+    [date.year,(date.month) - 1,date.day].compact.join(',')
+  end
+
+  # returns a year as an array of elements suitable for creating a new date in javascript
+  def js_year(year)
+    [year,1,1].compact.join(',')
   end
 
   # Returns a list of asset keys as a delimited string
@@ -174,16 +202,6 @@ module TransamHelper
       str << delimiter unless e == list.last
     end
     str
-  end
-
-  # returns a date as an array of elements suitable for creating a new date in javascript
-  def js_date(date)
-    [date.year,(date.month) - 1,date.day].compact.join(',')
-  end
-
-  # returns a year as an array of elements suitable for creating a new date in javascript
-  def js_year(year)
-    [year,1,1].compact.join(',')
   end
 
   # Returns the class for the navigation link
@@ -212,5 +230,15 @@ module TransamHelper
     end
     return val
   end
+
+  # returns the current url with any new params tacked on
+  def current_url(new_params)
+    url_for params: params.permit!.merge(new_params) # allow all params already passed
+  end
+
+  ## Expose select methods at module level. This allows calling the method directly (e.g. 'TransamHelper.foo') rather than
+  ## having to include the whole module just to get one function
+  module_function :system_user
+
 
 end

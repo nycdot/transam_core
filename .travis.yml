@@ -1,9 +1,15 @@
 language: ruby
 rvm:
-- 2.2.1
+- 2.6.10
+services:
+  - mysql
 branches:
   only:
-  - master
+    - master
+    - qa
+    - /quarter\d*/
+    - develop
+    - /2.\d*.\d*/
 env:
 - TEST_SUITE=rspec
 - TEST_SUITE=cucumber

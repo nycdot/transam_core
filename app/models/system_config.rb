@@ -13,6 +13,8 @@
 #------------------------------------------------------------------------------
 class SystemConfig < ActiveRecord::Base
 
+  has_paper_trail on: [:update], only: [:fy_year]
+
   #------------------------------------------------------------------------------
   # Validations
   #------------------------------------------------------------------------------
@@ -32,7 +34,6 @@ class SystemConfig < ActiveRecord::Base
   validates :geocoder_region,             :presence => true
   validates :num_forecasting_years,       :presence => true
   validates :num_reporting_years,         :presence => true
-  validates :asset_base_class_name,       :presence => true
   validates :max_rows_returned,           :presence => true
 
   #------------------------------------------------------------------------------
@@ -42,8 +43,85 @@ class SystemConfig < ActiveRecord::Base
   #------------------------------------------------------------------------------
   def self.instance
     # there will be only one row, and its ID must be '1'
-    find(1)
+    find_by(id: 1)
   end
+
+  def self.allowable_params
+    [:fy_year]
+  end
+
+  def self.formatted_version(version)
+    {
+      datetime: version.created_at,
+      event: "System Rollover", # currently only versioning FY rollovers
+      event_type: "Update: Rollover method changed to #{version.changeset['fy_year'][1].blank? ? 'automatic' : 'manual'}",
+      comments: version.changeset['fy_year'][1].blank? ? "" : "Fiscal Year set to #{fiscal_year(version.changeset['fy_year'][1])}.",
+      user: version.actor
+    }
+  end
+
+  # can't use FiscalYear mixin because database name matches mixin method name so copy custom one here
+  # Returns the calendar year formatted as a FY string
+  def self.fiscal_year(year)
+
+    # some controllers might have a special formatter instead of the default one to use the FY string
+    # eventually default might be a SystemConfig.instance attribute as well but for now hard-coded
+
+    if defined? params
+      klass = params[:controller].classify
+    elsif self.class.to_s.include? 'Controller'
+      klass = self.class.to_s[0..-('Controller'.length+1)]
+    else
+      klass = self.class.to_s
+    end
+
+    formatter = SystemConfig.instance.special_fiscal_year_formatters[klass]
+    formatter = SystemConfig.instance.default_fiscal_year_formatter if formatter.nil?
+
+    if formatter == 'start_year'
+      "#{year}"
+    elsif formatter == 'end_year'
+      "#{year+1}"
+    else
+      yr = year - (year < 2000 ? 1900 : 2000)
+      first = "%.2d" % yr
+      if yr == 99 # when yr == 99, yr + 1 would be 100, which causes: "FY 99-100"
+        next_yr = 00
+      else
+        next_yr = (yr + 1)
+      end
+      last = "%.2d" % next_yr
+      "#{first}-#{last}"
+    end
+  end
+
+
+  # set default widgets and the column they are in. these can be customized at the app level
+  # 0 is all columns or you set the column width in the widget
+  def self.dashboard_widgets
+    return Rails.application.config.dashboard_widgets if Rails.application.config.try(:dashboard_widgets)
+
+    widgets = []
+    SystemConfig.transam_module_names.each do |mod|
+      view_component = "#{mod}_widget"
+      widgets << [view_component, 2]
+    end
+    widgets += [
+        ['assets_widget', 1],
+        #['activities_widget', 1],
+        ['queues', 1],
+        ['users_widget', 1],
+        ['notices_widget', 3],
+        ['search_widget', 3],
+        ['message_queues', 3],
+        ['task_queues', 3],
+        ['asset_events_widget', 0]
+    ]
+
+    return widgets
+
+  end
+
 
   #
   # Queries the gemspec to see if the transam extension has been loaded.
@@ -133,6 +211,10 @@ class SystemConfig < ActiveRecord::Base
   end
   def map_bounds
     [[min_lat, min_lon], [max_lat, max_lon]]
+  end
+
+  def special_fiscal_year_formatters
+    Rails.application.config.try(:special_fiscal_year_formatters) || Hash.new
   end
 
   #------------------------------------------------------------------------------

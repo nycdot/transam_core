@@ -19,12 +19,13 @@
         = f.input :asset_tag, :prompt => "Enter the asset tag...", :label => "Asset Tag", :input_html => {:data => {:convert => "uppercase"}}
         = f.input :external_id, :prompt => "Enter any external ID...", :label => "External ID", :input_html => {:maxlength => 32}
         = f.input :description
-        = f.input :quantity
+        = f.input :quantity, :input_html => {:min => 1}
         = f.input :quantity_units, :collection => Uom.units
-        = f.association :manufacturer, :prompt => "Select manufacturer...", :collection => Manufacturer.active_for_asset_type(@asset.asset_type), :label_method => :to_s
+        = f.input :manufacturer_id, :as => :hidden, :input_html => {:value => Manufacturer.find_by(filter: 'Equipment', code: 'ZZZ').id}
+        = f.input :other_manufacturer, :input_html => {:maxlength => 30}
         = f.input :manufacturer_model, :prompt => "Enter manufacturer model...", :label => "Manufacturer Model"
         = f.input :manufacture_year, :label => "Manufacture Year"
-        = f.input :serial_number
+        = f.input :serial_number, :input_html => {:maxlength => 32}
 
     .col-md-6
       = dialog_tag('Purchase', {:icon => 'fa fa-refresh', :class => "form_part"}) do
@@ -34,23 +35,38 @@
           = f.input_field :purchase_cost, :class => "form-control"
 
         = f.input :purchase_date, :wrapper => :vertical_append, :label => "Purchase Date" do
-          = f.input_field :purchase_date, :as => :string, :class => 'form-control datepicker', :data => {'behavior' => 'datepicker'}, :value => format_as_date(f.object.purchase_date)
+          = f.input_field :purchase_date, :as => :string, :class => 'form-control datepicker', :data => {'date-container' => '#purchase_dialog'}, :value => format_as_date(f.object.purchase_date)
           %span.input-group-addon
             %i.fa.fa-calendar
 
         = f.input :warranty_date, :wrapper => :vertical_append, :label => "Warranty Date" do
-          = f.input_field :warranty_date, :as => :string, :class => 'form-control datepicker', :data => {'behavior' => 'datepicker'}, :value => format_as_date(f.object.warranty_date)
+          = f.input_field :warranty_date, :as => :string, :class => 'form-control datepicker', :data => {'date-container' => '#purchase_dialog'}, :value => format_as_date(f.object.warranty_date)
           %span.input-group-addon
             %i.fa.fa-calendar
 
         = f.input :in_service_date, :wrapper => :vertical_append, :label => "In Service Date" do
-          = f.input_field :in_service_date, :as => :string, :class => 'form-control datepicker', :data => {'behavior' => 'datepicker'}, :value => format_as_date(f.object.in_service_date)
+          = f.input_field :in_service_date, :as => :string, :class => 'form-control datepicker', :data => {'date-container' => '#purchase_dialog'}, :value => format_as_date(f.object.in_service_date)
           %span.input-group-addon
             %i.fa.fa-calendar
 
         = f.input :purchased_new, :as => :radio_buttons, :required => true, :label => "Purchased New"
+        = f.input :vendor_id, :as => :hidden
         = f.input :vendor_name, :label => 'Vendor', :input_html => {:autocomplete => 'off', :class => 'form-control', :placeholder => 'Enter vendor name', :id => 'vendor_name', :data => {:url => filter_vendors_path}}
+        = f.input :parent_key, :as => :hidden
+        = f.input :parent_name, :label => 'Parent', :input_html => {:autocomplete => 'off', :class => 'form-control', :placeholder => 'Enter search text', :id => 'parent_name', :data => {:url => filter_inventory_index_path}}
+        - rule = PolicyAssetTypeRule.find_by(policy_id: Policy.find_by(organization_id: @asset.organization_id), asset_type_id: @asset.asset_type_id)
+        - if rule.try(:condition_rollup_calculation_type).nil?
+          - rule = PolicyAssetTypeRule.find_by(policy_id: Policy.where('parent_id IS NULL'), asset_type_id: @asset.asset_type_id)
+        - if rule.condition_rollup_calculation_type.class_name == 'CustomWeightedConditionRollupCalculator'
+          = f.input :weight, :value => @asset.weight || rule.condition_rollup_weight, :min => 0, :max => 100, :hint => 'Give a custom weight between 0-100 for importance in condition rollup.'
         = f.input :expected_useful_life, as: :hidden, :value => 0
+
+        -# render the engine form components if there are any
+        - SystemConfig.transam_module_names.each do |mod|
+          - view_component = "#{mod}_asset_form"
+          - Rails.logger.debug "Checking for #{view_component}: Results = #{lookup_context.template_exists?(view_component, 'assets', true)}"
+          - if lookup_context.template_exists?(view_component, 'assets', true)
+            = render :partial => "assets/#{view_component}", :locals => {:f => f}
 
     .col-md-12
       = f.button :submit, :class => 'btn btn-primary'
@@ -65,8 +81,6 @@
       this.value = this.value.toUpperCase();
     });
 
-    $('[data-behavior~=datepicker]').datepicker({
-    });
     $('#vendor_name').on('focus', function() {
       _typeahead_source_url = $(this).data('url');
     });
@@ -82,6 +96,7 @@
         var item = JSON.parse(obj);
         // Update the UI
         $('#vendor_name').attr('value', item.name);
+        $('#asset_vendor_id').attr('value', item.id);
         return item.name;
       }
     });
@@ -92,3 +107,4 @@
       form.submit();
     }
   });
+

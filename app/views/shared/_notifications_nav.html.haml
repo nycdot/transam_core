@@ -1,7 +1,7 @@
 %li#notifications_li
   %span#notification_count{style: 'display: none;'}
   = link_to "#", :id => "notificationLink", :class => "dropdown-toggle", :data => {"toggle" => "dropdown"}, :title => 'Notifications' do
-    %i.fa.fa-globe.fa-2x
+    %i.fa.fa-globe-americas.fa-2x
   #notificationContainer{style: "overflow-y:scroll;max-height:400px;"}
     #notificationsBody.notifications
     #notificationFooter
@@ -13,18 +13,15 @@
 
   countNotifications();
 
-  setInterval(countNotifications, 10000); // checking for notifications every 10 seconds
+  setInterval(countNotifications, parseInt('#{Notification.interval}'));
 
   function countNotifications() {
     $.ajax({
       url: "/notifications/count",
-      type: 'GET',
-      dataType: 'json',
-      data: {},
-      complete: function(response, status) {
-        if (parseInt(response.responseText) > 0) {
+      success: function(result){
+        if (parseInt(result) > 0) {
           $('#notification_count').show();
-          $('#notification_count').html(response.responseText);
+          $('#notification_count').html(result);
         } else {
           $('#notification_count').hide();
         }

@@ -1,19 +1,50 @@
+require 'active_record/acts_as'
 require 'devise'
 require 'rolify'
 require 'cancan'
 require 'unitwise'
 require 'chronic'
 require 'breadcrumbs_on_rails'
-require 'state_machine'
-require 'kaminari'
+require 'state_machines'
+require 'state_machines-activemodel'
+require 'state_machines-activerecord'
 require 'delayed_job'
 require 'delayed_job_active_record'
 require 'high_voltage'
 require 'haml-rails'
 require 'simple_form'
+require 'country_select'
+require 'gritter'
 require 'carrierwave'
+require 'carrierwave-aws'
+require 'aws-sdk-cloudwatch'
 require 'rmagick'
 require 'countries'
+require 'rails-data-migrations'
+require 'font-awesome-sass'
+require 'bootstrap-datepicker-rails'
+require 'bootstrap-editable-rails'
+require 'bootstrap-sass'
+require 'wicked'
+require 'cocoon'
+require 'jquery-ui-rails'
+require 'jquery-form-rails'
+require 'selectize-rails'
+require 'roo-xls'
+require 'kaminari'
+
+require 'paper_trail'
+require 'paper_trail-association_tracking'
+require 'paper_trail-globalid'
+
+require 'deep_cloneable'
+
+# API
+#require 'open_api'
+require 'jbuilder'
+require 'responders'
+require 'simple_token_authentication'
+require 'api-pagination'
 
 module TransamCore
   class Engine < ::Rails::Engine
@@ -32,12 +63,17 @@ module TransamCore
         config.paths["db/migrate"].expanded.each do |expanded_path|
           app.config.paths["db/migrate"] << expanded_path
         end
+        app.config.paths.add "db/data_migrations"
+        config.paths.add "db/data_migrations"
+        config.paths["db/data_migrations"].expanded.each do |expanded_path|
+          app.config.paths["db/data_migrations"] << expanded_path
+        end
       end
     end
 
     config.generators do |g|
       g.test_framework      :rspec,        :fixture => false
-      g.fixture_replacement :factory_girl, :dir => 'spec/factories'
+      g.fixture_replacement :factory_bot, :dir => 'spec/factories'
       g.assets false
       g.helper false
     end

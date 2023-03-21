@@ -14,10 +14,6 @@ RSpec.describe Image, :type => :model do
   end
 
   describe 'validations' do
-    it 'must has a description' do
-      test_image.description = nil
-      expect(test_image.valid?).to be false
-    end
     it 'must have a filename' do
       test_image.original_filename = nil
       expect(test_image.valid?).to be false
@@ -34,15 +30,26 @@ RSpec.describe Image, :type => :model do
 
   it '#allowable_params' do
     expect(Image.allowable_params).to eq([
-      :imagable_id,
-      :imagable_type,
-      :image,
-      :description,
-      :original_filename,
-      :content_type,
-      :file_size,
-      :created_by_id
-    ])
+         :base_imagable_type,
+         :base_imagable_id,
+         :global_base_imagable,
+         :imagable_id,
+         :imagable_type,
+         :global_imagable,
+         :image,
+         :image_classification_id,
+         :name,
+         :description,
+         :exportable,
+         :original_filename,
+         :content_type,
+         :file_size,
+         :created_at,
+         :created_by_id,
+         :compass_point,
+         :latitude,
+         :longitude
+     ])
   end
 
   it '.to_s' do

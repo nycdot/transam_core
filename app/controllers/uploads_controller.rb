@@ -1,36 +1,34 @@
 class UploadsController < OrganizationAwareController
 
   add_breadcrumb "Home", :root_path
-  add_breadcrumb "Bulk Updates", :uploads_path
+  add_breadcrumb SystemConfigFieldCustomization.find_by(table_name: 'uploads', field_name: nil, action_name: nil)&.label || "Bulk Updates", :uploads_path
 
   before_action :set_upload, :only => [:show, :destroy, :resubmit, :undo, :download]
+
+  # Lock down the controller
+  authorize_resource only: [:index, :show, :new, :create, :destroy]
 
   # Session Variables
   INDEX_KEY_LIST_VAR        = "uploads_key_list_cache_var"
 
   def index
 
-    # Start to set up the query
-    conditions  = []
-    values      = []
 
-    # Add the organization clause
-    conditions << 'organization_id IN (?)'
-    values << @organization_list
-
-    # See if we got an organization type id
+    # See if we got an file status type id
     @file_status_type_id = params[:file_status_type_id]
-    unless @file_status_type_id.blank?
+    if @file_status_type_id.blank?
+      @uploads = Upload.all
+    else
       @file_status_type_id = @file_status_type_id.to_i
-      conditions << 'file_status_type_id = ?'
-      values << @file_status_type_id
+      @uploads = Upload.where(file_status_type_id: @file_status_type_id)
 
       type = FileStatusType.find(@file_status_type_id)
       add_breadcrumb type.name unless type.nil?
     end
 
-    asset_ids = Asset.where('organization_id IN (?) AND upload_id IS NOT NULL', @organization_list).pluck(:upload_id)
-    @uploads = Upload.where('('+conditions.join(' AND ')+') OR id IN (?) OR user_id = ?', *values, asset_ids, current_user.id).order(:created_at)
+    # get assets from multi org or just uploaded by user (to get multi not yet processed)
+    asset_ids = Rails.application.config.asset_base_class_name.constantize.where.not(upload_id: nil).where(organization_id: @organization_list).pluck(:upload_id)
+    @uploads = @uploads.where('organization_id IN (?) OR id IN (?) OR user_id = ?', @organization_list, asset_ids, current_user.id).order(:created_at)
 
     # cache the set of asset ids in case we need them later
     cache_list(@uploads, INDEX_KEY_LIST_VAR)
@@ -87,18 +85,8 @@ class UploadsController < OrganizationAwareController
       return
     end
 
-    # cache affected assets
-    affected_assets = @upload.asset_events.map(&:asset).uniq
-
     @upload.reset
     @upload.update(file_status_type: FileStatusType.find_by(name: "Reverted"))
-
-    # re-update the assets which previously had events
-    affected_assets.each do |affected|
-      job = AssetUpdateJob.new(affected.object_key)
-      fire_background_job(job)
-    end
-
 
     notify_user(:notice, "Upload has been reverted.")
 
@@ -142,16 +130,6 @@ class UploadsController < OrganizationAwareController
 
     @message = "Creating inventory template. This process might take a while."
 
-    # Prepare a list of the asset types for the current organization list where at least
-    # one asset type is operational
-    @asset_types = []
-    #@organization.asset_type_counts.each{|x| @asset_types << AssetType.find(x[0])}
-
-    AssetType.all.each do |type|
-      assets = Asset.where(asset_type: type)
-      @asset_types << {id: type.id, name: type.name, class_name: type.class_name, orgs: @organization_list.select{|o| assets.where(organization_id: o).count > 0}}
-    end
-
   end
 
   #-----------------------------------------------------------------------------
@@ -180,7 +158,6 @@ class UploadsController < OrganizationAwareController
     add_breadcrumb "Download Template"
 
     # Figure out which approach was used to access this method
-    from_form = true
     file_content_type = nil
     # From the form. This is managed via a TemplateProxy class
     if params[:template_proxy].present?
@@ -199,28 +176,23 @@ class UploadsController < OrganizationAwareController
       # The form defines the FileContentType which identifies the builder to use
       file_content_type = FileContentType.find(template_proxy.file_content_type_id)
       # asset_types are an array of asset types
-      asset_types = [AssetType.find(template_proxy.asset_type_id)]
 
     elsif params[:targets].present?
-      from_form = false
       # The request came from the audit results page. We have a list of asset
       # object keys
       file_content_type = FileContentType.find(params[:file_content_type_id])
-      assets = Asset.operational.where(:object_key => params[:targets].split(','))
-      asset_types = AssetType.where(:id => assets.pluck(:asset_type_id).uniq)
-      org = @organization
+      assets = Rails.application.config.asset_base_class_name.constantize.operational.where(:object_key => params[:targets].split(','))
+      org = nil
     end
 
+    is_component = params[:is_component]
+    fta_asset_class_id = params[:fta_asset_class_id]
+
     # Find out which builder is used to construct the template and create an instance
-    builder = file_content_type.builder_name.constantize.new(:organization => org, :asset_types => [*asset_types], :organization_list => @organization_list)
+    builder = file_content_type.builder_name.constantize.new(:organization => org, :asset_class_name => template_proxy.try(:asset_class_name), :asset_seed_class_id => template_proxy.try(:asset_seed_class_id), :organization_list => @organization_list, :is_component => is_component, :fta_asset_class_id => fta_asset_class_id)
 
     # Generate the spreadsheet. This returns a StringIO that has been rewound
-    if from_form
-      asset_params = {}
-      asset_params[:organization] = org
-      asset_params[:asset_type] = asset_types
-      asset_params[:object_key] = params[:ids] if params[:ids]
-    else
+    if params[:targets].present?
       builder.assets = assets
     end
     stream = builder.build
@@ -249,7 +221,7 @@ class UploadsController < OrganizationAwareController
 
   def new
 
-    add_breadcrumb "New Template"
+    add_breadcrumb SystemConfigFieldCustomization.find_by(table_name: 'uploads', action_name: 'new')&.label || "Upload Template"
 
     @upload = Upload.new
 
@@ -264,7 +236,7 @@ class UploadsController < OrganizationAwareController
     @upload = Upload.new(form_params)
     @upload.user = current_user
 
-    add_breadcrumb "New Template"
+    add_breadcrumb SystemConfigFieldCustomization.find_by(table_name: 'uploads', action_name: 'new')&.label || "Upload Template"
 
     respond_to do |format|
       if @upload.save

@@ -1,4 +1,8 @@
+# --------------------------------
+# # DEPRECATED see TTPLAT-1832 or https://wiki.camsys.com/pages/viewpage.action?pageId=51183790
+# --------------------------------
 #
+# #
 # Schedule Rehabilitation update event. This is event type is required for
 # all implementations
 #
@@ -7,7 +11,7 @@ class ScheduleRehabilitationUpdateEvent < AssetEvent
   # Callbacks
   after_initialize :set_defaults
               
-  validates :rebuild_year, :presence => true, :numericality => { :only_integer => :true,  :greater_than_or_equal_to => Date.today.year - 10 }
+  validates :rebuild_year, :presence => true, :numericality => { :only_integer => true,  :greater_than_or_equal_to => Date.today.year - 10 }
       
   #------------------------------------------------------------------------------
   # Scopes
@@ -43,9 +47,17 @@ class ScheduleRehabilitationUpdateEvent < AssetEvent
 
   # This must be overriden otherwise a stack error will occur  
   def get_update
-    "Scheduled for rehabilitation in #{fiscal_year(rebuild_year)}."
+    "Scheduled for rehabilitation in #{fiscal_year(rebuild_year)}"
   end
-  
+
+  ######## API Serializer ##############
+  def api_json(options={})
+    super.merge({
+      replacement_year: replacement_year,
+      rebuild_year: rebuild_year
+    })
+  end
+
   protected
 
   # Set resonable defaults for a new condition update event

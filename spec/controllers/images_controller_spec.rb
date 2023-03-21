@@ -8,6 +8,7 @@ RSpec.describe ImagesController, :type => :controller do
   before(:each) do
     Organization.destroy_all
     test_user.organizations << test_user.organization
+    test_user.viewable_organizations << test_user.organization
     test_user.save!
     sign_in test_user
   end
@@ -16,7 +17,7 @@ RSpec.describe ImagesController, :type => :controller do
     test_image = create(:image, :imagable_id => bus.id)
     bus.images << test_image
     bus.save!
-    get :index, :asset_id => bus.object_key
+    get :index, params: {:asset_id => bus.object_key}
     bus.reload
 
     expect(assigns(:imagable)).to eq(bus)
@@ -24,7 +25,7 @@ RSpec.describe ImagesController, :type => :controller do
   end
 
   it 'GET new' do
-    get :new, :inventory_id => bus.object_key
+    get :new, params: {:inventory_id => bus.object_key}
 
     expect(assigns(:imagable)).to eq(bus)
     expect(assigns(:image).to_json).to eq(Image.new.to_json)
@@ -34,7 +35,7 @@ RSpec.describe ImagesController, :type => :controller do
     test_image = create(:image, :imagable_id => bus.id)
     bus.images << test_image
     bus.save!
-    get :edit, {:inventory_id => bus.object_key, :id => test_image.object_key}
+    get :edit, params: {:inventory_id => bus.object_key, :id => test_image.object_key}
 
     expect(assigns(:imagable)).to eq(bus)
     expect(assigns(:image)).to eq(test_image)
@@ -43,7 +44,7 @@ RSpec.describe ImagesController, :type => :controller do
   it 'POST create' do
     request.env["HTTP_REFERER"] = root_path
     Image.destroy_all
-    post :create, {:inventory_id => bus.object_key, :image => attributes_for(:image)}
+    post :create, params: {:inventory_id => bus.object_key, :image => attributes_for(:image)}
     bus.reload
 
     expect(assigns(:imagable)).to eq(bus)
@@ -54,7 +55,7 @@ RSpec.describe ImagesController, :type => :controller do
     test_image = create(:image, :imagable_id => bus.id)
     bus.images << test_image
     bus.save!
-    post :update, {:inventory_id => bus.object_key, :id => test_image.object_key, :image => {:description => 'Test image2'}}
+    post :update, params: {:inventory_id => bus.object_key, :id => test_image.object_key, :image => {:description => 'Test image2'}}
     test_image.reload
 
     expect(test_image.description).to eq('Test image2')
@@ -65,7 +66,7 @@ RSpec.describe ImagesController, :type => :controller do
     test_image = create(:image, :imagable_id => bus.id)
     bus.images << test_image
     bus.save!
-    delete :destroy, {:inventory_id => bus.object_key, :id => test_image.object_key}
+    delete :destroy, params: {:inventory_id => bus.object_key, :id => test_image.object_key}
 
     expect(Image.find_by(:object_key => test_image.object_key)).to be nil
   end

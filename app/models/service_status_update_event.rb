@@ -50,14 +50,21 @@ class ServiceStatusUpdateEvent < AssetEvent
   #------------------------------------------------------------------------------
 
   def get_update
-    "Service status changed to #{service_status_type}." unless service_status_type.nil?
+    "Service status changed to #{service_status_type}" unless service_status_type.nil?
   end
 
   # Set resonable defaults for a new condition update event
   def set_defaults
     super
-    self.service_status_type ||= asset.service_status_type
+    self.service_status_type ||= transam_asset.service_status_updates.last.try(:service_status_type) if transam_asset
     self.asset_event_type ||= AssetEventType.find_by_class_name(self.name)
+  end
+
+  ######## API Serializer ##############
+  def api_json(options={})
+    super.merge({
+      service_status_type: service_status_type.api_json
+    })
   end
 
 end

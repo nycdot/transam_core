@@ -7,7 +7,14 @@ class ConditionUpdateEvent < AssetEvent
   # Callbacks
   after_initialize :set_defaults
 
+  # check policy
+  after_save :check_policy
+  after_destroy :check_policy
+
   # Associations
+  has_many :condition_type_percents, :foreign_key => "asset_event_id", :inverse_of  => :condition_update_event, :dependent => :destroy
+  accepts_nested_attributes_for :condition_type_percents, :allow_destroy => true, :reject_if   => lambda{ |attrs| attrs[:condition_type].blank? }
+
 
   # Condition of the asset
   belongs_to  :condition_type
@@ -16,10 +23,10 @@ class ConditionUpdateEvent < AssetEvent
   validates :assessed_rating,
       :presence     => true,
       :numericality => {
-      :greater_than_or_equal_to => ConditionType.minimum(:rating),
-      :less_than_or_equal_to    => ConditionType.maximum(:rating)
+      :greater_than_or_equal_to => ConditionType.min_rating || 0,
+      :less_than_or_equal_to    => ConditionType.max_rating || 5
       },
-      :allow_nil    => :true
+      :allow_nil    => true
   # validates :comments, :length => {:maximum => ???} # There is no limit in the Database/Schema
 
   before_validation do
@@ -36,6 +43,7 @@ class ConditionUpdateEvent < AssetEvent
   FORM_PARAMS = [
     :condition_type_id,
     :assessed_rating,
+    :condition_type_percents_attributes => [ConditionTypePercent.allowable_params]
   ]
 
   #------------------------------------------------------------------------------
@@ -59,6 +67,11 @@ class ConditionUpdateEvent < AssetEvent
   #
   #------------------------------------------------------------------------------
 
+  # usually no conditions on can create but can be overridden by specific asset events
+  def can_update?
+    asset_event_type.active #&& transam_asset.dependents.count == 0 ## temporaritly disable since not putting condition rollup in UI yet
+  end
+
   # Override numeric setters to remove any extraneous formats from the number strings eg $, etc.
   def assessed_rating=(num)
     self[:assessed_rating] = sanitize_to_float(num) unless num.blank?
@@ -67,10 +80,17 @@ class ConditionUpdateEvent < AssetEvent
   # This must be overriden otherwise a stack error will occur
   def get_update
     if condition_type.nil?
-      "Condition recorded as #{sprintf("%#.1f", assessed_rating)}"
+      "Condition recorded as #{sprintf("%#.2f", assessed_rating)}"
     else
-      "Condition recorded as #{sprintf("%#.1f", assessed_rating)} (#{condition_type})"
+      "Condition recorded as #{sprintf("%#.2f", assessed_rating)} (#{condition_type})"
     end
+  end
+
+  ######## API Serializer ##############
+  def api_json(options={})
+    super.merge({
+      assessed_rating: assessed_rating
+    })
   end
 
   protected
@@ -79,8 +99,15 @@ class ConditionUpdateEvent < AssetEvent
   # Should be overridden by any form fields during save
   def set_defaults
     super
-    self.assessed_rating ||= (asset.reported_condition_rating || ConditionType.maximum(:rating))
+    self.assessed_rating ||= transam_asset ? (transam_asset.condition_updates.last.try(:reported_condition_rating)) : ConditionType.max_rating
     self.asset_event_type ||= AssetEventType.find_by_class_name(self.name)
   end
 
+
+  def check_policy
+    if base_transam_asset
+      base_transam_asset.send(:check_policy_rule)
+      base_transam_asset.send(:update_asset_state)
+    end
+  end
 end

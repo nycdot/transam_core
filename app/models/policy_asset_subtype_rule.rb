@@ -14,7 +14,11 @@ class PolicyAssetSubtypeRule < ActiveRecord::Base
   #-----------------------------------------------------------------------------
   # Callbacks
   #-----------------------------------------------------------------------------
-  after_initialize :set_defaults
+  after_initialize  :set_defaults
+
+  after_save          :distribute_policy
+  after_update_commit :apply_policy
+  after_commit        :apply_distributed_policy
 
   #-----------------------------------------------------------------------------
   # Associations
@@ -32,19 +36,19 @@ class PolicyAssetSubtypeRule < ActiveRecord::Base
   validates :policy,                  :presence => true
   validates :asset_subtype,           :presence => true
 
-  validates :min_service_life_months,  :presence => true,  :numericality => {:only_integer => :true,   :greater_than_or_equal_to => 0}
-  validates :replacement_cost,         :presence => true,  :numericality => {:only_integer => :true,   :greater_than_or_equal_to => 0}
-  validates :cost_fy_year,             :presence => true,  :numericality => {:only_integer => :true,   :greater_than_or_equal_to => 0}
+  validates :min_service_life_months,  :presence => true,  :numericality => {:only_integer => true,   :greater_than_or_equal_to => 0}
+  validates :replacement_cost,         :presence => true,  :numericality => {:only_integer => true,   :greater_than_or_equal_to => 0}
+  validates :cost_fy_year,             :presence => true,  :numericality => {:only_integer => true,   :greater_than_or_equal_to => 0}
   validates_inclusion_of :replace_with_new, :in => [true, false]
   validates_inclusion_of :replace_with_leased, :in => [true, false]
-  validates :lease_length_months,       :allow_nil => true,  :numericality => {:only_integer => :true,   :greater_than_or_equal_to => 0}
+  validates :lease_length_months,       :allow_nil => true,  :numericality => {:only_integer => true,   :greater_than_or_equal_to => 0}
 
-  validates :rehabilitation_service_month,     :presence => true,  :numericality => {:only_integer => :true,   :greater_than_or_equal_to => 0}
-  validates :rehabilitation_labor_cost,     :allow_nil => true,  :numericality => {:only_integer => :true,   :greater_than_or_equal_to => 0}
-  validates :rehabilitation_parts_cost,     :allow_nil => true,  :numericality => {:only_integer => :true,   :greater_than_or_equal_to => 0}
-  validates :extended_service_life_months, :numericality => {:only_integer => :true,   :greater_than_or_equal_to => 0}
+  validates :rehabilitation_service_month,     :presence => true,  :numericality => {:only_integer => true,   :greater_than_or_equal_to => 0}
+  validates :rehabilitation_labor_cost,     :allow_nil => true,  :numericality => {:only_integer => true,   :greater_than_or_equal_to => 0}
+  validates :rehabilitation_parts_cost,     :allow_nil => true,  :numericality => {:only_integer => true,   :greater_than_or_equal_to => 0}
+  validates :extended_service_life_months, :numericality => {:only_integer => true,   :greater_than_or_equal_to => 0}
 
-  validates :min_used_purchase_service_life_months, :presence => true, :numericality => {:only_integer => :true, :greater_than_or_equal_to => 0}
+  validates :min_used_purchase_service_life_months, :presence => true, :numericality => {:only_integer => true, :greater_than_or_equal_to => 0}
 
   # Custom validator for checking values against parent policies
   validate :validate_min_allowable_policy_values
@@ -150,6 +154,14 @@ class PolicyAssetSubtypeRule < ActiveRecord::Base
     end
   end
 
+  def min_allowable_policy_attributes
+    [
+        :min_service_life_months,
+        :extended_service_life_months,
+        :min_used_purchase_service_life_months
+    ]
+  end
+
   def min_allowable_policy_values(subtype=nil)
     subtype = self.asset_subtype if subtype.nil?
     # This method gets the min values for child orgs that are not less than the value
@@ -157,11 +169,7 @@ class PolicyAssetSubtypeRule < ActiveRecord::Base
     results = Hash.new
 
     if policy.present? and policy.parent.present?
-      attributes_to_compare = [
-        :min_service_life_months,
-        :extended_service_life_months,
-        :min_used_purchase_service_life_months
-      ]
+      attributes_to_compare = min_allowable_policy_attributes
 
       parent_rule = policy.parent.policy_asset_subtype_rules.find_by(asset_subtype: subtype)
 
@@ -190,6 +198,33 @@ class PolicyAssetSubtypeRule < ActiveRecord::Base
     self.min_used_purchase_service_life_months ||= 0
     self.cost_fy_year ||= current_planning_year_year
   end
+
+  def distribute_policy
+    # distribute rule if parent policy
+    if self.policy.parent_id.nil? && (previous_changes.keys.map(&:to_s) & min_allowable_policy_attributes.map(&:to_s)).count > 0
+      subtype_rules = PolicyAssetSubtypeRule.includes(:policy).where(policies: {parent_id: self.policy_id},policy_asset_subtype_rules: {asset_subtype_id: self.asset_subtype_id})
+      subtype_rules.each do |subtype_rule|
+        parent_rules = subtype_rule.min_allowable_policy_values
+
+        subtype_rule.update_columns(subtype_rule.attributes.slice(*parent_rules.stringify_keys.keys).merge(parent_rules.stringify_keys){|key, oldval, newval| [oldval, newval].max})
+
+      end
+    end
+  end
+
+  # this has to be done after_commit in case there are other after_save calls that distribute other policy fields
+  def apply_distributed_policy
+    if self.policy.parent_id.nil?
+      Delayed::Job.enqueue PolicyAssetSubtypeRuleDistributerJob.new(PolicyAssetSubtypeRule.includes(:policy).where(policies: {parent_id: self.policy_id},policy_asset_subtype_rules: {asset_subtype_id: self.asset_subtype_id}).pluck('policy_asset_subtype_rules.id').join(',')), :priority => 0
+    end
+  end
+
+  def apply_policy
+    TransamAsset.operational.where(organization_id: self.policy.organization_id).each do |asset|
+      Rails.logger.warn "Issue applying policy on TransAM Asset #{asset}" unless asset.save
+    end
+  end
+  handle_asynchronously :apply_policy
 
   #-----------------------------------------------------------------------------
   private

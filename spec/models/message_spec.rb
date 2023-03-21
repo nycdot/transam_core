@@ -22,20 +22,21 @@ RSpec.describe Message, :type => :model do
 
     it 'is 1 for a message with a single response' do
       msg.save
-      msg.responses.create(attributes_for(:message))
+      msg.responses.build(attributes_for(:message))
       expect(msg.response_count).to eq(1)
     end
 
     it 'is 2 for a message which has a response to a response' do
       msg.save
+      puts msg 
       m2 = msg.responses.build(attributes_for(:message))
       m2.user = user2
-      m2.to_user user1
+      m2.to_user = user1
       m2.organization = msg.organization
       m2.save
       m3= m2.responses.build(attributes_for(:message))
       m3.user = user1
-      m3.to_user user2
+      m3.to_user = user2
       m3.organization = msg.organization
       m3.save
 

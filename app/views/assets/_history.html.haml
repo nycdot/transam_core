@@ -1,19 +1,20 @@
-.row
-  .col-sm-12
-    .well.well-small
-      #timeline{:style => 'background-color:#FFF;'}
+-#.row
+-#  .col-sm-12
+-#    .well.well-small
+-#      #timeline{:style => 'background-color:#FFF;'}
 
 .row
   .col-sm-12
     %table.table.table-hover{:id => 'asset-history-table', :data => {:toggle => 'table',
       :card_view => "false",
       :pagination => 'true',
-      :page_list => "[5, 10, 20, 50, 100, 200]",
+      :show_pagination_switch => 'false',
+      :page_list => "[5, 10, 20, 50, 100, 200, 10000]",
       :page_size => current_user.num_table_rows,
       :show_columns => 'false',
-      :state_save => 'true',
-      :state_save_id_table => "asset_events_id",
-      :state_save_expire => "1y",
+      :cookie => 'true',
+      :cookie_id_table => "asset_events_id",
+      :cookie_expire => "1y",
       :show_export => 'true',
       :export_types => "['csv', 'txt', 'excel']",
       :show_toggle => 'false',
@@ -22,68 +23,55 @@
       %thead
         %tr
           %th{:data => {:sortable => 'true'}} Event
-          %th{:data => {:sortable => 'true', :formatter => 'date_formatter'}} Date
-          %th Update
-          %th Notes
+          %th Event Activity
+          %th Comments
+          %th{:data => {:sortable => 'true', :formatter => 'date_time_formatter'}} Entry Date & Time
+          %th{:data => {:sortable => 'true'}} Event By
       %tbody
-        :ruby
-          # Extract into a hash array in order to include full updates from EarlyDispositionRequestUpdateEvent
-          # EarlyDispositionRequestUpdateEvent is a special case as it is state-ful and each state represent one history
-          asset_history = @asset.history.order(:event_date => :desc, :created_at => :desc).collect { |evt| 
-            if evt.asset_event_type.try(:class_name) == 'EarlyDispositionRequestUpdateEvent' 
-              ae = [{
-                object_key: evt.object_key,
-                description: evt.asset_event_type.description,
-                event_date: evt.created_at,
-                update: evt.get_update,
-                comments: (evt.comments.blank? ? " " : evt.comments)
-              }]
+        -# EarlyDispositionRequestUpdateEvent is a special case as it is state-ful and each state represent one history
+        - @asset.history.each do |evt|
+          - evt = AssetEvent.as_typed_event(evt)
+          - if evt.asset_event_type.try(:class_name) == 'EarlyDispositionRequestUpdateEvent'
+            - unless evt.is_new?
+              %tr{:data => {:action_path => "#{inventory_asset_event_path(evt.transam_asset.object_key, evt.object_key)}"}}
+                %td
+                  = evt.asset_event_type.description
+                %td
+                  = "#{evt.get_latest_update} on #{format_as_date(evt.event_date)}"
+                %td
+                  = (evt.comments.blank? ? " " : evt.comments).html_safe
+                %td
+                  = evt.updated_at
+                %td
+                  = evt.updater
 
-              ae << {
-                object_key: evt.object_key,
-                description: evt.asset_event_type.description,
-                event_date: evt.updated_at,
-                update: AssetEvent.as_typed_event(evt).get_latest_update,
-                comments: (evt.comments.blank? ? " " : evt.comments)
-              } unless AssetEvent.as_typed_event(evt).is_new?
+            %tr{:data => {:action_path => "#{inventory_asset_event_path(evt.transam_asset.object_key, evt.object_key)}"}}
+              %td
+                = evt.asset_event_type.description
+              %td
+                = "#{evt.get_update} on #{format_as_date(evt.event_date)}"
+              %td
+                = (evt.comments.blank? ? " " : evt.comments).html_safe
+              %td
+                = evt.created_at
+              %td
+                = evt.creator
 
-              ae
-
-            else
-              {
-                object_key: evt.object_key,
-                description: evt.asset_event_type.description,
-                event_date: evt.event_date,
-                update: evt.get_update,
-                comments: (evt.comments.blank? ? " " : evt.comments)
-              }
-            end
-            
-          }.flatten.sort_by {|evt| evt[:event_date]}.reverse
-
-        - asset_history.each do |evt|
-          %tr{:data => {:action_path => "#{inventory_asset_event_path(@asset, evt[:object_key])}"}}
-            %td
-              = evt[:description]
-            %td
-              = evt[:event_date]
-            %td
-              = evt[:update]
-            %td
-              = evt[:comments].html_safe
+          - else
+            %tr{:data => {:action_path => "#{inventory_asset_event_path(evt.transam_asset.object_key, evt.object_key)}"}}
+              %td
+                = evt.asset_event_type.description
+              %td
+                = "#{evt.get_update} on #{format_as_date(evt.event_date)}"
+              %td
+                = (evt.comments.blank? ? " " : evt.comments).html_safe
+              %td
+                = evt.updated_at
+              %td
+                = evt.updater || evt.creator
 
 :javascript
   $(window).resize(function() {
     $('#asset-history-table').bootstrapTable('resetView');
   });
 
-  function date_formatter(value) {
-    if (value) {
-      console.log(value);
-      var date = new Date(value);
-      console.log(date);
-      return date.getMonth() + 1 + "/" + date.getDate() + "/" + date.getFullYear();
-    } else {
-      return value;
-    }
-  };

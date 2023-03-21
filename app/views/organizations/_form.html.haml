@@ -14,23 +14,30 @@
       = f.input :customer_id, :as => :hidden, :input_html => {:value => Customer.first.id}
     .col-md-6
       = dialog_tag('Corporate', {:icon => 'fa fa-book', :class => "header-part"}) do
-        = f.input :name, :required => true
-        = f.input :short_name, :required => true, :label => "Short Name"
+        - field_custom = SystemConfigFieldCustomization.find_by(is_locked: true, table_name: 'organizations', field_name: 'name', active: true)
+        = f.input :name, :label => "Common Name (dba)", :required => true, :disabled => (field_custom.present? && eval(field_custom.code_frag))
+        - field_custom = SystemConfigFieldCustomization.find_by(is_locked: true, table_name: 'organizations', field_name: 'legal_name', active: true)
+        = f.input :legal_name, :required => true, :label => "Legal Name", :disabled => (field_custom.present? && eval(field_custom.code_frag))
+        - field_custom = SystemConfigFieldCustomization.find_by(is_locked: true, table_name: 'organizations', field_name: 'short_name', active: true)
+        = f.input :short_name, :required => true, :label => "Acronym or Short Name", :disabled => (field_custom.present? && eval(field_custom.code_frag))
         = f.input :external_id, :label => "External ID"
+        = f.input :executive_director_id, required: false, label: "Executive Director", collection: @org.users
     .col-md-6
       = dialog_tag('Contact', {:icon => 'fa fa-book', :class => "header-part"}) do
-        = f.input :phone, :required => true, :as => :tel
-        = f.input :fax, :as => :tel
+        = f.input :phone, :required => true, :as => :tel, :hint => 'Format 123-456-7890'
+        = f.input :fax, :as => :tel, :hint => 'Format 123-456-7890'
         = f.input :url, :required => true, :as => :url
+        = f.input :country, :required => true, :label => "Country", collection: [[ 'United States of America', 'US']]
         = f.input :address1, :required => true, :label => "Address 1"
         = f.input :address2, :label => "Address 2"
         .row
           .col-sm-6
             = f.input :city, :required => true
           .col-sm-3
-            = f.input :state, :required => true, :as => :select, :collection => Country['US'].states
+            = f.input :state, :required => true, :as => :select, :collection => ISO3166::Country['US'].states.keys
           .col-sm-3
             = f.input :zip, :required => true
+        = f.input :county, :label => "County"
         - if User.new.respond_to? :email_in_org_domain_list
           = f.input :allowed_email_domains, :required => true, :label => 'Allowed Email Domains', :placeholder => 'To enter more than one domain, separate with |. Domains are the url that follows @ (ex: camsys.com).'
 
@@ -42,7 +49,20 @@
 
   // jquery validations
   $('.org_form').validate({
+    rules: {
+      'organization[zip]': {
+        zipcodeUS: true
+      },
+      'organization[phone]' : {
+        phoneUS: true
+      },
+      'organization[fax]' : {
+        phoneUS: true
+      }
+    },
     submitHandler: function(form) {
       form.submit();
     }
   });
+
+

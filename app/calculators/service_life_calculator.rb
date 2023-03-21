@@ -30,7 +30,7 @@ class ServiceLifeCalculator < Calculator
     # Iterate over all the condition update events from earliest to latest
     # and find the first year (if any) that the  policy replacement became
     # effective
-    events = asset.condition_updates(true)
+    events = asset.condition_updates.reload
     condition_threshold = asset.policy_analyzer.get_condition_threshold
     Rails.logger.debug "Found #{events.count} events."
     Rails.logger.debug "Condition threshold = #{condition_threshold}."
@@ -47,8 +47,8 @@ class ServiceLifeCalculator < Calculator
 
     last_year_by_age = by_age(asset)
 
-    if last_year_by_age <= current_planning_year_year
-      current_planning_year_year + 1
+    if last_year_by_age <= fiscal_year_year_on_date(Date.today) + 1
+      fiscal_year_year_on_date(Date.today) + 2
     else
       last_year_by_age
     end

@@ -3,9 +3,6 @@
 #
 class BaseSearcher
 
-  # From the application config
-  MAX_ROWS_RETURNED         = SystemConfig.instance.max_rows_returned
-
   # Every search must have a user as the searcher
   attr_accessor :user
 
@@ -84,8 +81,12 @@ class BaseSearcher
     else
       conditions = (private_methods.grep(/_conditions$/) - [:organization_conditions])
     end
-
     conditions.map { |m| send(m) }.compact
+  end
+
+  def remove_blanks(input)
+    output = (input.is_a?(Array) ? input : [input])
+    output.select { |e| !e.blank? }
   end
 
 end

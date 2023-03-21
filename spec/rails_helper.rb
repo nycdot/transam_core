@@ -18,10 +18,9 @@ SimpleCov.start 'rails' do
   add_group "Uploaders", "app/uploaders"
 end
 
-require 'spec_helper'
 require File.expand_path("../dummy/config/environment", __FILE__)
 require 'rspec/rails'
-require 'factory_girl_rails'
+require 'factory_bot_rails'
 require 'database_cleaner'
 require 'devise'
 require 'shoulda-matchers'
@@ -38,8 +37,11 @@ Dir[TransamCore::Engine.root.join("spec/support/**/*.rb")].each { |f| require f 
 ActiveRecord::Migration.maintain_test_schema!
 
 RSpec.configure do |config|
-  config.include FactoryGirl::Syntax::Methods
-  config.include Devise::TestHelpers, :type => :controller
+  config.infer_spec_type_from_file_location!
+
+  config.include FactoryBot::Syntax::Methods
+  config.include Devise::Test::ControllerHelpers, :type => :controller
+  config.include RequestSpecHelper, type: :request
 end
 
 Shoulda::Matchers.configure do |config|
@@ -67,14 +69,34 @@ class StubOrg < Organization
   has_many :assets,   :foreign_key => 'organization_id'
 
   def get_policy
-    return StubPolicy.new
+    return StubPolicy.new(organization: self)
   end
 end
 
 class StubPolicy < Policy
 
+  def find_or_create_asset_type_rule a
+
+  end
+
   def find_or_create_asset_subtype_rule a, b=nil
 
+  end
+
+  def replacement_cost
+    100000
+  end
+
+  def replacement_cost_calculation_type
+    CostCalculationType.first
+  end
+
+  def service_life_calculation_type
+    ServiceLifeCalculationType.first
+  end
+
+  def min_service_life_months
+    120
   end
 
 end

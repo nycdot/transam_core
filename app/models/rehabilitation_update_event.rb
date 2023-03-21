@@ -13,7 +13,7 @@ class RehabilitationUpdateEvent < AssetEvent
 
   has_many :asset_subsystems, :through => :asset_event_asset_subsystems
 
-  validates :extended_useful_life_months, :numericality => {:only_integer => :true, :greater_than_or_equal_to => 0}, allow_nil: true
+  validates :extended_useful_life_months, :numericality => {:only_integer => true, :greater_than_or_equal_to => 0}, allow_nil: true
 
   #------------------------------------------------------------------------------
   # Scopes
@@ -67,6 +67,15 @@ class RehabilitationUpdateEvent < AssetEvent
   end
   def labor_cost
     asset_event_asset_subsystems.map(&:labor_cost).compact.reduce(0, :+)
+  end
+
+  ######## API Serializer ##############
+  def api_json(options={})
+    super.merge({
+      total_cost: cost,
+      extended_useful_life_months: extended_useful_life_months,
+      extended_useful_life_miles: extended_useful_life_miles
+    })
   end
 
   #------------------------------------------------------------------------------

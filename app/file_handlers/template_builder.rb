@@ -8,9 +8,12 @@
 class TemplateBuilder
 
   attr_accessor :organization
-  attr_accessor :asset_types
+  attr_accessor :asset_seed_class_id
+  attr_accessor :asset_class_name
   attr_accessor :assets
   attr_accessor :organization_list
+  attr_accessor :is_component
+  attr_accessor :fta_asset_class_id
 
   def build
 
@@ -33,10 +36,10 @@ class TemplateBuilder
       style_cache[s[:name]] = style
     end
     Rails.logger.debug style_cache.inspect
-
     # Add the header rows
+    title = sheet.styles.add_style(:bg_color => "00A9A9A9", :sz=>12)
     header_rows.each do |header_row|
-      sheet.add_row header_row
+      sheet.add_row header_row, :style => title 
     end
 
     # add the rows
@@ -45,7 +48,13 @@ class TemplateBuilder
     # Add the column styles
     column_styles.each do |col_style|
       Rails.logger.debug col_style.inspect
-      sheet.col_style col_style[:column], style_cache[col_style[:name]]
+      sheet.col_style col_style[:column], style_cache[col_style[:name]], (col_style[:options] || {})
+    end
+
+    # Add the row styles
+    row_styles.each do |row_style|
+      Rails.logger.debug row_style.inspect
+      sheet.row_style row_style[:row], style_cache[row_style[:name]], (row_style[:options] || {})
     end
 
     # set column widths
@@ -96,6 +105,10 @@ class TemplateBuilder
     []
   end
 
+  def row_styles
+    []
+  end
+
   # Override this to provide the worksheet name
   def worksheet_name
     'default'
@@ -103,9 +116,7 @@ class TemplateBuilder
 
   # Override this to get the header rows
   def header_rows
-    [
-      ['COL_1', 'COL_2', 'COL_3']
-    ]
+    []
   end
 
   # Override this at rows to the sheet
@@ -123,6 +134,12 @@ class TemplateBuilder
   def initialize(args = {})
     args.each do |k, v|
       self.send "#{k}=", v
+    end
+
+    if @asset_seed_class_id
+
+      @search_parameter = (@asset_class_name || Rails.application.config.asset_base_class_name).constantize.asset_seed_class_name.constantize.find_by(id: @asset_seed_class_id)
+      @asset_class_name = @search_parameter.class_name unless @asset_class_name.present?
     end
   end
 

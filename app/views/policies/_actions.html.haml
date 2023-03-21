@@ -15,13 +15,7 @@
           = link_to edit_policy_path(@policy) do
             %i.fa.fa-edit.fa-fw
             = " Modify this policy"
-      - if @policy.active
-        %li.divider
-        %li
-          = link_to runner_policy_path(@policy) do
-            %i.fa.fa-fw.fa-cogs
-            = " Apply this policy"
-      - else
+      - unless @policy.active
         %li.divider
         %li
           = link_to make_current_policy_path(@policy) do
@@ -42,7 +36,7 @@
           = link_to policy_path(@policy), :method => :delete, :data => {:confirm => "Are you sure? The action cannot be undone!"}  do
             %i.fa.fa-trash-o.fa-fw
             = " Remove this policy"
-      - if (can? :create_rules, @policy) and (@policy.policy_asset_type_rules.count != AssetType.active.count) and @policy.parent.nil?
+      - if (can? :create_rules, @policy) and @policy.parent.nil?
         %li.divider
         %li
           = link_to new_policy_rule_policy_path(@policy, :type => 1), :remote => true do

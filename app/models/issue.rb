@@ -7,7 +7,7 @@ class Issue < ActiveRecord::Base
   after_initialize  :set_defaults
             
   # Each issue was created by a user
-  belongs_to :creator, :class_name => "User", :foreign_key => "created_by_id"
+  belongs_to :creator, -> { unscope(where: :active) }, :class_name => "User", :foreign_key => "created_by_id"
 
   # Each issue has a type [Bug Suggestion, etc.]
   belongs_to :issue_type
@@ -23,7 +23,7 @@ class Issue < ActiveRecord::Base
   validates :web_browser_type_id,             :presence => true
   validates :comments,                        :presence => true
   validates :created_by_id,                   :presence => true
-  validates :resolution_comments,             :presence => true, :if => "issue_status_type_id == 2"
+  validates :resolution_comments,             :presence => true, :if => Proc.new { |u| u.issue_status_type_id == 2 }
   # validates_presence_of :resolution_comments, :if :issue_status == 'Resolved'
 
   # List of hash parameters allowed by the controller

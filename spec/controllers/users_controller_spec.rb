@@ -6,9 +6,85 @@ RSpec.describe UsersController, :type => :controller do
   let(:test_user2) { create(:normal_user) }
 
   before(:each) do
+    create(:admin, first_name: 'system', last_name: 'user')
+
+    test_user2.organizations = [test_user2.organization]
+    test_user2.viewable_organizations = [test_user2.organization]
+    test_user2.save!
+
     test_user.organizations = [test_user.organization, test_user2.organization]
+    test_user.viewable_organizations = [test_user.organization, test_user2.organization]
     test_user.save!
     sign_in test_user
+  end
+
+
+  describe 'GET table' do
+
+    it 'returns all users' do
+      get :table
+      user_count =  User.unscoped.distinct.joins(:organization).joins(:organizations)
+                      .where(users_organizations: {organization_id: test_user.viewable_organizations}).count
+      expect(response).to be_successful
+      parsed_response = JSON.parse(response.body)
+      expect(parsed_response["count"]).to eq(user_count)
+    end
+
+    it 'returns the first 10 users' do
+      get :table,  params: {page: 0, page_size: 10}
+      user_count =  User.unscoped.distinct.joins(:organization).joins(:organizations)
+                      .where(users_organizations: {organization_id: test_user.viewable_organizations}).count
+      expect(response).to be_successful
+      parsed_response = JSON.parse(response.body)
+      expect(parsed_response["count"]).to eq(user_count)
+      expect(parsed_response["rows"].count).to eq([10, user_count].min)
+      expect(parsed_response["rows"].first["last_name"]["data"]).to eq(User.first.last_name)
+    end
+
+    it 'returns users associated with the last organization' do
+      org = Organization.last
+      get :table,  params: {search: org.short_name}
+      expect(response).to be_successful
+      parsed_response = JSON.parse(response.body)
+      expect(parsed_response["count"]).to eq(User.where(organization: org).count)
+    end
+
+  end
+
+  describe 'GET Table Preferences' do 
+    it 'returns a users preferred tables' do 
+      get :table_preferences, params: {table_code: "users"}
+      expect(response).to be_successful
+      parsed_response = JSON.parse(response.body)
+      expect(parsed_response["sort"].first["column"].to_s).to eq(TablePreferences::DEFAULT_TABLE_PREFERENCES[:users][:sort].first[:column].to_s)
+    end
+  end
+
+  describe 'PUT Table Preferences' do 
+    it 'returns a users preferred tables' do 
+      #TODO: Use strong params here. Don't let the hash key names be arbitrary.
+      params = {"table_preferences": 
+                  {
+                    "table_code": "users",
+                    "sort":[
+                      {"first_name": "descending"},
+                      {"last_name": "descending"}
+                    ]
+                  }
+                }
+
+      put :update_table_preferences, params: params
+      expect(response).to be_successful
+      parsed_response = JSON.parse(response.body)
+
+      get :table_preferences, params: {table_code: "users"}
+      parsed_response = JSON.parse(response.body)
+      expect(parsed_response["sort"].first["first_name"].to_s).to eq("descending")
+
+      get :table_preferences, params: {table_code: "bus"}
+      parsed_response = JSON.parse(response.body)
+      expect(parsed_response["sort"].first["org_name"]).to eq("ascending")
+    end
   end
 
   describe 'GET index' do
@@ -22,14 +98,14 @@ RSpec.describe UsersController, :type => :controller do
       end
 
       it 'returns all users with a role' do
-        get :index, {:role => 'admin'}
+        get :index, params: {:role => 'admin'}
 
         expect(assigns(:users)).to include(test_user)
         expect(assigns(:users)).not_to include(test_user2)
       end
 
       it 'returns no users if wrong role' do
-        get :index, {:role => 'fake_role'}
+        get :index, params: {:role => 'fake_role'}
 
         expect(assigns(:users).count).to eq(0)
       end
@@ -37,7 +113,7 @@ RSpec.describe UsersController, :type => :controller do
   end
 
   it 'GET show' do
-    get :show, {:id => subject.current_user.object_key}
+    get :show, params: {:id => subject.current_user.object_key}
 
     expect(assigns(:user)).to eq(subject.current_user)
   end
@@ -50,12 +126,12 @@ RSpec.describe UsersController, :type => :controller do
 
   describe 'GET edit' do
     it 'can view own' do
-      get :edit, {:id => subject.current_user.object_key}
+      get :edit, params: {:id => subject.current_user.object_key}
       expect(assigns(:user)).to eq(subject.current_user)
     end
 
     it 'support can view others' do
-      get :edit, {:id => test_user2.object_key}
+      get :edit, params: {:id => test_user2.object_key}
 
       expect(assigns(:user)).to eq(test_user2)
     end
@@ -63,55 +139,55 @@ RSpec.describe UsersController, :type => :controller do
 
   describe 'GET reset_password' do
     it 'can view own' do
-      get :reset_password, {:id => subject.current_user.object_key}
+      get :reset_password, params: {:id => subject.current_user.object_key}
       expect(assigns(:user)).to eq(subject.current_user)
     end
 
     it 'support can view others' do
-      get :reset_password, {:id => test_user2.object_key}
+      get :reset_password, params: {:id => test_user2.object_key}
       expect(assigns(:user)).to eq(test_user2)
     end
   end
 
   describe 'GET change_password' do
     it 'can view own' do
-      get :change_password, {:id => subject.current_user.object_key}
+      get :change_password, params: {:id => subject.current_user.object_key}
       expect(assigns(:user)).to eq(subject.current_user)
     end
 
     it 'support can view others' do
-      get :change_password, {:id => test_user2.object_key}
+      get :change_password, params: {:id => test_user2.object_key}
       expect(assigns(:user)).to eq(test_user2)
     end
   end
 
   describe 'GET settings' do
     it 'can view own' do
-      get :settings, {:id => subject.current_user.object_key}
+      get :settings, params: {:id => subject.current_user.object_key}
       expect(assigns(:user)).to eq(subject.current_user)
     end
 
     it 'support can view others' do
-      get :settings, {:id => test_user2.object_key}
+      get :settings, params: {:id => test_user2.object_key}
       expect(assigns(:user)).to eq(test_user2)
     end
   end
 
   describe 'GET profile_photo' do
     it 'can view own' do
-      get :profile_photo, {:id => subject.current_user.object_key}
+      get :profile_photo, params: {:id => subject.current_user.object_key}
       expect(assigns(:user)).to eq(subject.current_user)
     end
 
     it 'support can view others' do
-      get :profile_photo, {:id => test_user2.object_key}
+      get :profile_photo, params: {:id => test_user2.object_key}
       expect(assigns(:user)).to eq(test_user2)
     end
   end
 
   it 'POST create' do
     test_org = create(:organization)
-    post :create, {"user" => {:password => SecureRandom.base64(64), "first_name"=>"Lydia", "last_name"=>"Chang", "email"=>"lchang@camsys.com", "title"=>"Software Engineer", "external_id"=>"", "phone"=>"617-354-1067", "phone_ext"=>"", "timezone"=>"Eastern Time (US & Canada)", "address1"=>"400 CambridgePark Drive", "address2"=>"", "city"=>"Cambridge", "state"=>"MA", "zip"=>"02140", "organization_id"=>test_org.id, "role_ids"=>Role.find_by(:name => 'manager').id.to_s, :privilege_ids => [], :organization_ids => ""}}
+    post :create, params: {"user" => {:password => SecureRandom.base64(64), "first_name"=>"Lydia", "last_name"=>"Chang", "email"=>"lchang@camsys.com", "title"=>"Software Engineer", "external_id"=>"", "phone"=>"617-354-1067", "phone_ext"=>"", "timezone"=>"Eastern Time (US & Canada)", "address1"=>"400 CambridgePark Drive", "address2"=>"", "city"=>"Cambridge", "state"=>"MA", "zip"=>"02140", "organization_id"=>test_org.id, "role_ids"=>Role.find_by(:name => 'manager').id.to_s, :privilege_ids => [], :organization_ids => ""}}
 
     expect(assigns(:user).first_name).to eq('Lydia')
     expect(assigns(:user).last_name).to eq('Chang')
@@ -129,20 +205,20 @@ RSpec.describe UsersController, :type => :controller do
 
   describe 'PUT update' do
     it 'can update ownself' do
-      put :update, {"id" => subject.current_user.object_key, "user"=>{'title' => 'new promotion', :role_ids => 2, :privilege_ids => [], :organization_ids => ""}}
+      put :update, params: {"id" => subject.current_user.object_key, "user"=>{'title' => 'new promotion', :role_ids => 2, :privilege_ids => [], :organization_ids => ""}}
 
       expect(assigns(:user).title).to eq('new promotion')
     end
 
     it 'a support can update anyone' do
-      put :update, {"id" => test_user2.object_key, "user"=>{'title' => 'test user2 new promotion', :role_ids => 2, :privilege_ids => [], :organization_ids => ""}}
+      put :update, params: {"id" => test_user2.object_key, "user"=>{'title' => 'test user2 new promotion', :role_ids => 2, :privilege_ids => [], :organization_ids => ""}}
 
       expect(assigns(:user).title).to eq('test user2 new promotion')
     end
   end
 
   it 'PUT update_password' do
-    put :update_password, {:id => subject.current_user.object_key, :user => {:password => 'newpassword'}}
+    put :update_password, params: {:id => subject.current_user.object_key, :user => {:password => 'newpassword'}}
 
     expect(assigns(:user)).to eq(subject.current_user)
   end
@@ -151,7 +227,7 @@ RSpec.describe UsersController, :type => :controller do
     User.unscoped.where(:last_name => 'Chang').delete_all if User.unscoped.find_by(:last_name => 'Chang')
     create(:normal_user, :last_name => 'Chang', :organization => test_user.organization)
 
-    delete :destroy, {:id => User.find_by(:last_name => 'Chang').object_key}
+    delete :destroy, params: {:id => User.find_by(:last_name => 'Chang').object_key}
 
     inactive_user = User.unscoped.find_by(:last_name => 'Chang')
     expect(inactive_user).not_to be nil

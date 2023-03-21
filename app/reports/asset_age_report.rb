@@ -15,28 +15,28 @@ class AssetAgeReport < AbstractReport
     
     a = []
     asset_counts = []
-    labels = ['Age (Years)']
+    table_labels = ['Years']
 
     if report_filter_type > 0
       asset_type = AssetType.find_by_id(report_filter_type)
-      labels << asset_type.name
+      table_labels << asset_type.name
     else
       AssetType.all.each do |at|
-        count = Asset.where('assets.organization_id IN (?) AND assets.asset_type_id = ?', organization_id_list, at.id).count
+        count = Rails.application.config.asset_base_class_name.constantize.where(organization_id: organization_id_list, asset_subtype_id: at.id).count
         asset_counts << count
-        labels << at.name unless count == 0
+        table_labels << at.name unless count == 0
       end
     end
             
-    (1..MAX_REPORTING_YEARS).each do |year|
+    (0..MAX_REPORTING_YEARS).each do |year|
       counts = []
       counts << "#{year}"
       manufacture_year = year.year.ago.year
       if report_filter_type > 0
-        counts << Asset.where("assets.organization_id IN (?) AND assets.asset_type_id = ? AND assets.manufacture_year = ?", organization_id_list, report_filter_type, manufacture_year).count
+        counts << Rails.application.config.asset_base_class_name.constantize.where(organization_id: organization_id_list, asset_subtype_id: report_filter_type, manufacture_year: manufacture_year).count
       else
         AssetType.all.each_with_index do |type, idx|
-          counts << Asset.where("assets.organization_id IN (?) AND asset_type_id = ? AND manufacture_year = ?", organization_id_list, type.id, manufacture_year).count unless asset_counts[idx] == 0
+          counts << Rails.application.config.asset_base_class_name.constantize.where(organization_id: organization_id_list, asset_subtype_id: type.id, manufacture_year: manufacture_year).count unless asset_counts[idx] == 0
         end
       end
       a << counts
@@ -45,18 +45,20 @@ class AssetAgeReport < AbstractReport
     # get the bucket for MAX_YEARS+ years old
     year = MAX_REPORTING_YEARS
     counts = []
-    counts << "+#{year}"
+    counts << "> #{year}"
     manufacture_year = MAX_REPORTING_YEARS.year.ago.year
     if report_filter_type > 0
-      counts << Asset.where("assets.organization_id IN (?) AND assets.asset_type_id = ? AND assets.manufacture_year < ?", organization_id_list, report_filter_type, manufacture_year).count
+      counts << Rails.application.config.asset_base_class_name.constantize.where(organization_id: organization_id_list, asset_subtype_id: report_filter_type, manufacture_year: manufacture_year).count
     else
       AssetType.all.each_with_index do |type, idx|
-        counts << Asset.where("assets.organization_id IN (?) AND assets.asset_type_id = ? AND assets.manufacture_year < ?", organization_id_list, type.id, manufacture_year).count unless asset_counts[idx] == 0
+        counts << Rails.application.config.asset_base_class_name.constantize.where(organization_id: organization_id_list, asset_subtype_id: type.id, manufacture_year: manufacture_year).count unless asset_counts[idx] == 0
       end
     end
     a << counts
+
+    subheader = 'Age Count <a class="transam-popover" data-container="body" data-content="<p>Based on <i>In Service Date</i> of asset + 365 days.</p><p>e.g. <i>In Service Date</i> + 364 days = <1 year; <i>In Service Date</i> + 365 days = 1 year</p>" data-html="true" data-placement="bottom" data-title="Age" data-toggle="popover" tabindex="0" data-original-title="" title=""><i class="fa fa-info-circle text-info"></i></a>'
         
-    return {:labels => labels, :data => a}
+    return {data: a, labels: table_labels, table_subheader: subheader, table_labels: table_labels, table_data: a, chart_labels: table_labels, chart_data: a, formats: [:integer, :integer, :integer, :integer, :integer, :integer, :integer, :integer, :integer, :integer, :integer, :integer]}
 
   end
   

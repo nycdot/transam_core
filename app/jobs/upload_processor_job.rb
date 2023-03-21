@@ -24,6 +24,9 @@ class UploadProcessorJob < Job
         raise RuntimeError.new "Processing failed for Upload #{object_key}"
       end
 
+      # Add a row into the activity table
+      ActivityLog.create({:organization_id => upload.organization_id, :user_id => User.find_by(first_name: 'system').id, :item_type => self.class.name, :activity =>  "#{upload.file_content_type} #{upload.file_status_type}.", :activity_time => Time.now})
+
       event_url = Rails.application.routes.url_helpers.upload_path(upload)
       upload_notification = Notification.create!(text: "#{upload.file_content_type} #{upload.file_status_type}.", link: event_url)
       if upload.organization_id.present?
@@ -31,9 +34,6 @@ class UploadProcessorJob < Job
         upload_notification.notifiable_id = upload.organization_id
       end
       UserNotification.create!(user: upload.user, notification: upload_notification)
-
-    else
-      raise RuntimeError, "Can't find upload with object_key #{object_key}"
     end
   end
 

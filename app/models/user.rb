@@ -4,9 +4,12 @@
 # Base class for all users. This class represents a generic user.
 #-------------------------------------------------------------------------------
 class User < ActiveRecord::Base
-
+  acts_as_token_authenticatable
+  
   # Enable user roles for this use
   rolify
+
+  serialize :user_prefs, JSON
 
   # Include default devise modules. Others available are:
   # :confirmable, :lockable, :timeoutable and :omniauthable
@@ -15,6 +18,9 @@ class User < ActiveRecord::Base
   # Include the object key mixin
   include TransamObjectKey
 
+  include TransamTokenAuthentication
+  include TablePreferences
+  
   #-----------------------------------------------------------------------------
   # Callbacks
   #-----------------------------------------------------------------------------
@@ -43,7 +49,9 @@ class User < ActiveRecord::Base
 
   # every user has access to 0 or more organizations for reporting
   has_and_belongs_to_many :organizations, :join_table => 'users_organizations'
-  has_many :organization_users, -> {uniq}, through: :organizations, :source => 'users'
+  has_and_belongs_to_many :viewable_organizations, :join_table => 'users_viewable_organizations', :class_name => 'Organization'
+
+  has_many :organization_users, -> {distinct}, through: :organizations, :source => 'users'
 
   # Every user can have 0 or more messages
   has_many   :messages
@@ -69,8 +77,11 @@ class User < ActiveRecord::Base
   # AssetEvents that have been tagged by the user
   has_many    :asset_events,  :foreign_key => :created_by_id
 
-  #
+  # Deprecated saved search
   has_many    :saved_searches
+
+  # New saved query
+  has_many    :saved_queries,  :foreign_key => :created_by_user_id
 
   #-----------------------------------------------------------------------------
   # Transients
@@ -95,16 +106,17 @@ class User < ActiveRecord::Base
   validates :state,         :allow_nil => true, :length => { maximum: 2 }
   validates :zip,           :allow_nil => true, :length => { maximum: 12 }
 
-  validates :num_table_rows,:presence => true,  :numericality => {:only_integer => :true, :greater_than_or_equal_to => 5}
+  validates :num_table_rows,:presence => true,  :numericality => {:only_integer => true, :greater_than_or_equal_to => 5}
   validates :organization,  :presence => true
 
   #-----------------------------------------------------------------------------
   # Scopes
   #-----------------------------------------------------------------------------
-  # default scope
-  default_scope { order(:last_name) }
   # Scope only active users
   scope :active, -> { where(active: true) }
+
+  # default scope
+  default_scope { active.order(:last_name, :first_name) }
 
   #-----------------------------------------------------------------------------
   # Lists
@@ -114,6 +126,7 @@ class User < ActiveRecord::Base
     :last_name,
     :email,
     :phone,
+    :title,
   ]
 
   # List of allowable form param hash keys
@@ -143,7 +156,7 @@ class User < ActiveRecord::Base
     :role_ids,
     :privilege_ids,
     :user_organization_filter_id,
-    :organization_ids
+    :organization_ids => [],
   ]
 
   #-----------------------------------------------------------------------------
@@ -152,30 +165,6 @@ class User < ActiveRecord::Base
 
   def self.allowable_params
     FORM_PARAMS
-  end
-
-  # set default widgets and the column they are in. these can be customized at the app level
-  def self.dashboard_widgets
-    return Rails.application.config.dashboard_widgets if Rails.application.config.try(:dashboard_widgets)
-
-    widgets = []
-    SystemConfig.transam_module_names.each do |mod|
-      view_component = "#{mod}_widget"
-      widgets << [view_component, 2]
-    end
-    widgets += [
-        ['assets_widget', 1],
-        ['activities_widget', 1],
-        ['queues', 1],
-        ['users_widget', 1],
-        ['notices_widget', 3],
-        ['search_widget', 3],
-        ['message_queues', 3],
-        ['task_queues', 3]
-    ]
-
-    return widgets
-
   end
 
   #-----------------------------------------------------------------------------
@@ -187,7 +176,7 @@ class User < ActiveRecord::Base
     if weather_code
       weather_code.code
     else
-      Rails.application.config.default_weather_code
+      SystemConfig.instance.default_weather_code
     end
   end
 
@@ -212,6 +201,22 @@ class User < ActiveRecord::Base
   end
   def on_hold_tasks
     assigned_tasks.where(:state => "halted")
+  end
+
+  def all_searches(search_type_id=nil)
+    if search_type_id
+      saved_searches.where(search_type_id: search_type_id) + searches_shared_with_me.where(search_type_id: search_type_id)
+    else
+      saved_searches + searches_shared_with_me
+    end
+  end
+
+  def shared_searches
+    saved_searches.joins(:organizations)
+  end
+
+  def searches_shared_with_me
+    SavedSearch.joins(:organizations).where(organizations: {id: organizations.ids}).where.not(saved_searches: {user_id: self.id})
   end
 
   # Returns the initials for this user
@@ -280,8 +285,6 @@ class User < ActiveRecord::Base
     self.user_organization_filters = UserOrganizationFilter.joins(:users).where(created_by_user_id: self.id).sorted.group('user_organization_filters.id').having( 'count( user_id ) = 1' )
 
     UserOrganizationFilter.where('resource_type IS NOT NULL').each do |filter|
-      puts self.try(filter.resource_type.downcase.pluralize).include? filter.resource
-      puts self.organizations.inspect
       if self.respond_to? filter.resource_type.downcase.pluralize #check has many associations
         if self.try(filter.resource_type.downcase.pluralize).include? filter.resource
           self.user_organization_filters << filter
@@ -306,6 +309,107 @@ class User < ActiveRecord::Base
     end
 
     self.save!
+  end
+
+  #-----------------------------------------------------------------------------
+  # Generate Table Data
+  #-----------------------------------------------------------------------------
+
+  # TODO: Make this a shareable Module 
+  def rowify fields=nil
+
+    fields ||= [:last_name,
+                :first_name,
+                :organization,
+                :email,
+                :phone,
+                :phone_ext,
+                :title,
+                :role,
+                :privileges,
+                :status]
+
+    field_library = {
+      last_name: {label: "Last", method: :last_name, url: "/users/#{self.object_key}/"},
+      first_name: {label: "First", method: :first_name, url: nil},
+      organization: {label: "Primary Organization", method: :organization, url: nil},
+      organizations: {lable: "All Organizations", method: :org_list},
+      email: {label: "Email", method: :email, url: nil},
+      phone: {label: "Phone", method: :phone, url: nil},
+      phone_ext: {label: "Ext.", method: :phone_ext, url: nil},
+      title: {label: "Title", method: :title, url: nil},
+      role: {label: "Role", method: :role, url: nil},
+      privileges: {label: "Privileges", method: :user_privileges, url: nil},
+      status: {label: "Status", method: :status, url: nil},
+      external_id: {},
+      system_access: {},
+      timezone: {},
+      notify_via_email: {label: "Send Emails", helper: :format_as_yes_no},
+      num_table_rows: {label: "Table Rows"},
+      sign_in_count: {label: "Num Logins"},
+      last_sign_in_at: {label: "Last Login", helper: :format_as_date_time},
+      last_sign_in_ip: {label: "Last Login IP"},
+      failed_attempts: {label: "Num Failed"},
+      locked_at: {label: "Locked", helper: :format_as_date_time},
+      created_at: {helper: :format_as_date_time},
+      updated_at: {helper: :format_as_date_time}
+    }
+    
+    row = {}
+    fields.each do |field|
+      # Use conventions
+      label = field_library[field][:label] || field.to_s.titleize
+      method = field_library[field][:method] || field
+      value = self.send(method)
+      helper_method = field_library[field][:helper]
+      data = helper_method ? ApplicationController.helpers.send(helper_method, value).to_s : value.to_s
+      row[field] =  {label: label, data: data, url: field_library[field][:url]} 
+    end
+    return row 
+  end
+
+  def role 
+    roles.roles.last&.label
+  end
+
+  def user_privileges
+    roles.privileges.collect{|x| x.label}.join(', ')
+  end 
+
+  def status
+    active ? "Active" : "Inactive"
+  end
+
+  def system_access
+    active ? "Yes" : "No"
+  end
+  
+  def last_name_drilldown
+    #drilldown link
+    #TODO: use user path instead of hard coded html
+    "<a href='/users/#{self.object_key}/'>#{self.last_name}</a>"
+  end
+
+  def org_list
+    organizations.each(&:to_s).join(', ')
+  end
+
+  # End Generate Table Data
+
+  def api_json(options={})
+    {
+      last_name: last_name,
+      first_name: first_name,
+      email: email,
+      phone: phone,
+      phone_ext: phone_ext,
+      title: title,
+      address1: address1,
+      address2: address2,
+      city: city,
+      state: state, 
+      zip: zip
+    }
   end
 
   #-----------------------------------------------------------------------------
@@ -340,6 +444,7 @@ class User < ActiveRecord::Base
   end
   #-----------------------------------------------------------------------------
 
+
   #-----------------------------------------------------------------------------
   # Protected Methods
   #-----------------------------------------------------------------------------
@@ -347,7 +452,7 @@ class User < ActiveRecord::Base
 
   # Set resonable defaults for a new user
   def set_defaults
-    self.timezone ||= 'Eastern Time (US & Canada)'
+    self.timezone ||= Rails.application.config.time_zone
     self.state ||= SystemConfig.instance.default_state_code
     self.num_table_rows ||= 10
     self.notify_via_email ||= false
@@ -357,6 +462,7 @@ class User < ActiveRecord::Base
 
   def clean_habtm_relationships
     organizations.clear
+    viewable_organizations.clear
   end
 
   #-----------------------------------------------------------------------------

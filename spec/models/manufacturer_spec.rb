@@ -2,20 +2,16 @@ require 'rails_helper'
 
 RSpec.describe Manufacturer, :type => :model do
 
-  let(:test_manufacturer) { create(:manufacturer) }
+  let(:test_manufacturer) { Manufacturer.first }
   let(:bus) { create(:buslike_asset) }
-
-  before(:each) do
-    Manufacturer.destroy_all
-  end
 
   describe 'associations' do
     it 'has many assets' do
       expect(test_manufacturer).to have_many(:assets)
 
       bus.update!(:manufacturer => test_manufacturer)
-      bus2 = create(:buslike_asset, :manufacturer => create(:manufacturer))
-
+      bus2 = create(:buslike_asset, :manufacturer_id => 100)
+      
       expect(test_manufacturer.assets).to include(bus)
       expect(test_manufacturer.assets).not_to include(bus2)
       expect(test_manufacturer.asset_count(bus.organization)).to eq(1)
@@ -46,6 +42,11 @@ RSpec.describe Manufacturer, :type => :model do
   end
 
   it '.to_s' do
-    expect(test_manufacturer.to_s).to eq("#{test_manufacturer.code}-#{test_manufacturer.name}")
+    expect(test_manufacturer.to_s).to eq("#{test_manufacturer.code} - #{test_manufacturer.name}")
   end
+
+  it 'responds to api_json' do
+    expect(test_manufacturer).to respond_to(:api_json)
+  end
+  
 end

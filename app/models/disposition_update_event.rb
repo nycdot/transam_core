@@ -5,6 +5,7 @@ class DispositionUpdateEvent < AssetEvent
 
   # Callbacks
   after_initialize :set_defaults
+  after_save       :update_asset
 
   # Associations
 
@@ -49,6 +50,15 @@ class DispositionUpdateEvent < AssetEvent
     "#{disposition_type} on #{event_date}"
   end
 
+  ######## API Serializer ##############
+  def api_json(options={})
+    super.merge({
+      disposition_type: disposition_type.api_json(options),
+      sales_proceeds: sales_proceeds,
+      mileage_at_disposition: mileage_at_disposition
+    })
+  end
+
   #------------------------------------------------------------------------------
   #
   # Protected Methods
@@ -59,8 +69,12 @@ class DispositionUpdateEvent < AssetEvent
   # Set resonable defaults for a new condition update event
   def set_defaults
     super
-    self.disposition_type ||= asset.disposition_type
+    self.disposition_type ||= transam_asset.disposition_updates.last.try(:disposition_type)
     self.asset_event_type ||= AssetEventType.find_by_class_name(self.name)
+  end
+
+  def update_asset
+    AssetDispositionUpdateJob.new(transam_asset.object_key).perform
   end
 
 end

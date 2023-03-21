@@ -3,13 +3,26 @@ class OrganizationsController < OrganizationAwareController
   add_breadcrumb "Home",  :root_path
   add_breadcrumb "Organizations", :organizations_path
 
-  before_filter :get_org, :only => [:show, :map, :edit, :update]
+  before_action :get_org, :only => [:show, :map, :edit, :update]
+
+  # Lock down the controller
+  authorize_resource except: [:get_policies]
 
   # include the transam markers mixin
   include TransamMapMarkers
 
   INDEX_KEY_LIST_VAR    = "organization_key_list_cache_var"
   SESSION_VIEW_TYPE_VAR = 'organization_subnav_view_type'
+
+  def get_policies
+    org_id = params[:organization_id]
+
+    result = Policy.where(organization_id: org_id).order(active: :desc).pluck(:id, :description, :active).map{|p| [p[0], "#{p[1]} #{p[2] ? '(Current)' : ''}"]}
+
+    respond_to do |format|
+      format.json { render json: result.to_json }
+    end
+  end
 
   # GET /asset
   # GET /asset.json
@@ -25,6 +38,20 @@ class OrganizationsController < OrganizationAwareController
       values << @organization_type_id
 
       add_breadcrumb OrganizationType.find(@organization_type_id).name.pluralize(2), organizations_path(:organization_type_id => @organization_type_id)
+    end
+
+    if params[:show_active_only].nil?
+      @show_active_only = 'active'
+    else
+      @show_active_only = params[:show_active_only]
+    end
+
+    if @show_active_only == 'active'
+      conditions << 'organizations.active = ?'
+      values << true
+    elsif @show_active_only == 'inactive'
+      conditions << 'organizations.active = ?'
+      values << false
     end
 
     conditions << 'id IN (?)'
@@ -68,7 +95,7 @@ class OrganizationsController < OrganizationAwareController
     @markers = generate_map_markers(@organizations, true)
 
     # get the data for the tabs
-    @users = @org.users
+    @users = @org.users.active
 
     if @org.try(:assets)
       rep = AssetSubtypeReport.new
@@ -101,9 +128,17 @@ class OrganizationsController < OrganizationAwareController
 
     org_type = OrganizationType.find_by(id: params[:organization][:organization_type_id])
     if org_type
-      @org = org_type.class_name.constantize.new(form_params)
+      bootstrap_toggle_fields = organization_allowable_params.select{|x| (x.to_s.include? '_ids') && !(x.to_s.include? '[]')}
+      @org = org_type.class_name.constantize.new(form_params.except(*bootstrap_toggle_fields))
 
       if @org.save
+
+        bootstrap_toggle_fields.each do |field|
+          if form_params[field].present?
+            list = form_params[field].split(',')
+            @org.send("#{field.to_s}=",list)
+          end
+        end
 
         @org.updates_after_create
 
@@ -113,7 +148,7 @@ class OrganizationsController < OrganizationAwareController
         end
 
         # set current session to current org filter again in case new org in current filter
-        set_current_user_organization_filter_(current_user, current_user.user_organization_filter)
+        set_current_user_organization_filter_(current_user, current_user.user_organization_filter) if current_user.user_organization_filter
         get_organization_selections
 
         redirect_to organization_path(@org), notice: 'Organization was successfully created.'
@@ -151,7 +186,52 @@ class OrganizationsController < OrganizationAwareController
     add_breadcrumb "Update"
 
     respond_to do |format|
-      if @org.update_attributes(form_params)
+      bootstrap_toggle_fields = organization_allowable_params.select{|x| (x.to_s.include? '_ids') && !(x.to_s.include? '[]')}
+      if @org.update_attributes(form_params.except(*bootstrap_toggle_fields, :rta_org_credentials_attributes))
+        bootstrap_toggle_fields.each do |field|
+          if form_params[field].present?
+            list = form_params[field].split(',')
+            @org.send("#{field.to_s}=",list)
+          end
+        end
+        # TODO: Refactor for new table
+        if rta_credentials = form_params[:rta_org_credentials_attributes]
+          rta_credentials.values.each do |c|
+            if c[:_destroy] == "1"
+              if credential = RtaOrgCredential.find_by(id: c[:id])
+                unless credential.destroy
+                  notify_user(:alert, "There was an issue removing RTA integration credentials:\n#{credential.errors.full_messages.join("\n")}")
+                  format.html { redirect_to edit_organization_path(@org) }
+                  format.json { head :no_content }
+                end
+              end
+            elsif credential = RtaOrgCredential.find_by(id: c[:id])
+              unless credential.update(name: c[:name],
+                                       rta_client_id: c[:rta_client_id],
+                                       rta_client_secret: c[:rta_client_secret],
+                                       rta_tenant_id: c[:rta_tenant_id])
+                notify_user(:alert, "There was an issue updating RTA integration credentials:\n#{credential.errors.full_messages.join("\n")}")
+                format.html { redirect_to edit_organization_path(@org) }
+                format.json { head :no_content }
+              end
+            else
+              unless credential = RtaOrgCredential.create(organization: @org,
+                                                          name: c[:name],
+                                                          rta_client_id: c[:rta_client_id],
+                                                          rta_client_secret: c[:rta_client_secret],
+                                                          rta_tenant_id: c[:rta_tenant_id])
+                notify_user(:alert, "There was an creating RTA integration credentials:\n#{credential.errors.full_messages.join("\n")}")
+                format.html { redirect_to edit_organization_path(@org) }
+                format.json { head :no_content }
+              end
+              unless credential.valid?
+                notify_user(:alert, "There was an creating RTA integration credentials:\n#{credential.errors.full_messages.join("\n")}")
+                format.html { redirect_to edit_organization_path(@org) }
+                format.json { head :no_content }
+              end
+            end
+          end
+        end
         notify_user(:notice, "#{@org.name} was successfully updated.")
         format.html { redirect_to organization_url(@org) }
         format.json { head :no_content }

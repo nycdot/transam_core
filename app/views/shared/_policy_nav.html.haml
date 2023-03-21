@@ -4,14 +4,20 @@
     %b.caret
   %ul.dropdown-menu.multi-level{:role => 'menu'}
     %li.text-left
-      = link_to policies_path do
+      = link_to rule_sets_path do
         %i.fa.fa-book.fa-fw
         Policies
+      -# %ul.dropdown-menu
+      -#   - RuleSet.all.each do |rule_set|
+      -#     %li.text-left
+      -#       = link_to rule_set_path(rule_set) do
+      -#         %i.fa.fa-fw.fa-book
+      -#         = rule_set
+
     %li.divider
 
     - # Load module specific tab content if they exist
     - SystemConfig.transam_module_names.each do |mod|
       - view_component = "#{mod}_policy_sub_nav"
-      - Rails.logger.debug "Checking for #{view_component}: Results = #{lookup_context.template_exists?(view_component, 'shared', true)}"
       - if lookup_context.template_exists?(view_component, 'shared', true)
         = render :partial => "shared/#{view_component}"

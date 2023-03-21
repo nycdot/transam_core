@@ -1,3 +1,7 @@
+# --------------------------------
+# # DEPRECATED see TTPLAT-1832 or https://wiki.camsys.com/pages/viewpage.action?pageId=51183790
+# --------------------------------
+
 #-------------------------------------------------------------------------------
 #
 # Asset
@@ -9,8 +13,6 @@
 class Asset < ActiveRecord::Base
 
   OBJECT_CACHE_EXPIRE_SECONDS = Rails.application.config.object_cache_expire_seconds
-  # The policy analyzer to use comes from the Rails config
-  POLICY_ANALYZER = Rails.application.config.policy_analyzer
 
   #-----------------------------------------------------------------------------
   # Behaviors
@@ -37,6 +39,8 @@ class Asset < ActiveRecord::Base
   # Associations common to all asset types
   #-----------------------------------------------------------------------------
 
+  has_one :transit_asset
+
   # each asset belongs to a single organization
   belongs_to  :organization
 
@@ -60,6 +64,8 @@ class Asset < ActiveRecord::Base
 
   # each can belong to a parent
   belongs_to  :parent, :class_name => "Asset",  :foreign_key => :parent_id
+
+  belongs_to :location, :class_name => "Asset", :foreign_key => :location_id
 
   # Each asset has zero or more asset events. These are all events regardless of
   # event type. Events are deleted when the asset is deleted
@@ -104,15 +110,20 @@ class Asset < ActiveRecord::Base
   # Each asset has zero or more tasks. Tasks are deleted when the asset is deleted
   has_many    :tasks,       :as => :taskable,     :dependent => :destroy
 
-  # Each asset can have 0 or more dependents
+  # Each asset can have 0 or more dependents (parent-child relationships)
   has_many    :dependents,  :class_name => 'Asset', :foreign_key => :parent_id, :dependent => :nullify
+
+  accepts_nested_attributes_for :dependents
+
+  # Facilities can have many vehicles stored on their premises
+  has_many    :occupants,   :class_name => 'Asset', :foreign_key => :location_id, :dependent => :nullify
 
   # Each asset can be associated with 0 or more asset groups
   has_and_belongs_to_many :asset_groups
 
   # Each asset was created and updated by a user
-  belongs_to :creator, :class_name => "User", :foreign_key => :created_by_id
-  belongs_to :updator, :class_name => "User", :foreign_key => :updated_by_id
+  belongs_to :creator, -> { unscope(where: :active) }, :class_name => "User", :foreign_key => :created_by_id
+  belongs_to :updator, -> { unscope(where: :active) }, :class_name => "User", :foreign_key => :updated_by_id
 
   # Has been tagged by the user
   has_many    :asset_tags
@@ -123,11 +134,11 @@ class Asset < ActiveRecord::Base
   validates     :asset_type_id,       :presence => true
   validates     :asset_subtype_id,    :presence => true
   validates     :created_by_id,       :presence => true
-  validates     :manufacture_year,    :presence => true, :numericality => {:only_integer => :true, :greater_than_or_equal_to => 1900}
-  validates     :expected_useful_life, :numericality => {:only_integer => :true, :greater_than_or_equal_to => 0}, :presence => true
+  validates     :manufacture_year,    :presence => true, :numericality => {:only_integer => true, :greater_than_or_equal_to => 1900}
+  validates     :expected_useful_life, :numericality => {:only_integer => true, :greater_than_or_equal_to => 0}, :presence => true
   validates_inclusion_of :purchased_new, :in => [true, false]
-  validates     :purchase_cost,       :presence => :true, :numericality => {:only_integer => :true, :greater_than_or_equal_to => 0}
-  validates     :purchase_date,       :presence => :true
+  validates     :purchase_cost,       :presence => true, :numericality => {:only_integer => true, :greater_than_or_equal_to => 0}
+  validates     :purchase_date,       :presence => true
   validates     :serial_number,       uniqueness: {scope: :organization, message: "must be unique within an organization"}, allow_nil: true, allow_blank: true
 
   #-----------------------------------------------------------------------------
@@ -163,10 +174,12 @@ class Asset < ActiveRecord::Base
   # Transient Attributes
   #-----------------------------------------------------------------------------
   attr_reader :vendor_name
+  attr_accessor :parent_name
 
   #-----------------------------------------------------------------------------
   # Scopes
   #-----------------------------------------------------------------------------
+
   # Returns a list of assets that have been disposed
   scope :disposed,    -> { where('assets.disposition_date IS NOT NULL') }
   # Returns a list of assets that are still operational
@@ -239,6 +252,7 @@ class Asset < ActiveRecord::Base
     :vendor_id,
     :vendor_name,
     :manufacturer_id,
+    :other_manufacturer,
     :manufacturer_model,
     :purchase_cost,
     :purchase_date,
@@ -264,7 +278,11 @@ class Asset < ActiveRecord::Base
     :disposition_date,
     :disposition_type_id,
     :parent_id,
+    :parent_name,
+    :parent_key,
+    :location_id,
     :superseded_by_id,
+    :weight,
     :created_by_id,
     :updated_by_id
   ]
@@ -274,6 +292,12 @@ class Asset < ActiveRecord::Base
   # Class Methods
   #
   #-----------------------------------------------------------------------------
+
+  def self.decorates
+    decor = AssetDecorator.new(self.unscoped.ids)
+    decor.whichHierarchy(true)
+    return decor
+  end
 
   # Returns an array of classes which are descendents of Asset, this includes classes
   # that are both direct and in-direct assendents.
@@ -299,12 +323,20 @@ class Asset < ActiveRecord::Base
 
   # Factory method to return a strongly typed subclass of a new asset
   # based on the asset subtype
-  def self.new_asset(asset_subtype)
+  def self.new_asset(asset_subtype, params={})
 
     asset_class_name = asset_subtype.asset_type.class_name
     asset = asset_class_name.constantize.new({:asset_subtype_id => asset_subtype.id, :asset_type_id => asset_subtype.asset_type.id})
     return asset
 
+  end
+
+  def self.very_specific
+    if self.distinct.pluck(:asset_type_id).count == 1
+      self.first.asset_type.class_name.constantize.where(id: self.ids)
+    else
+      self
+    end
   end
 
   # Returns a typed version of an asset. Every asset has a type and this will
@@ -373,58 +405,119 @@ class Asset < ActiveRecord::Base
 
   # Render the asset as a JSON object -- overrides the default json encoding
   def as_json(options={})
-    json = {
-      :id => self.id,
-      :object_key => self.object_key,
-      :asset_tag => self.asset_tag,
-      :external_id => self.external_id,
+    if options[:is_super]
+      super(options)
+    else
+      json = {
+        :id => self.id,
+        :object_key => self.object_key,
+        :asset_tag => self.asset_tag,
+        :external_id => self.external_id,
 
-      :organization_id => self.organization.to_s,
-      :asset_type_id=> self.asset_type.to_s,
-      :asset_subtype_id => self.asset_subtype.to_s,
+        :organization_id => self.organization.to_s,
+        :asset_type_id=> self.asset_type.to_s,
+        :asset_subtype_id => self.asset_subtype.to_s,
 
-      :parent_id => self.parent.to_s,
-      :name => self.name,
-      :description => self.description,
+        :parent_id => self.parent.to_s,
+        :location_id => self.location.to_s,
+        :name => self.name,
+        :description => self.description,
 
-      :service_status_type_id => self.service_status_type.present? ? self.service_status_type.code : nil,
-      :age => self.age,
-      :reported_condition_rating => self.reported_condition_rating,
+        :service_status_type_id => self.service_status_type.present? ? self.service_status_type.code : nil,
+        :age => self.age,
+        :reported_condition_rating => self.reported_condition_rating,
 
-      :scheduled_rehabilitation_year => self.scheduled_rehabilitation_year.present? ? fiscal_year(self.scheduled_rehabilitation_year) : nil,
-      :scheduled_replacement_year => self.scheduled_replacement_year.present? ? fiscal_year(self.scheduled_replacement_year) : nil,
+        :scheduled_rehabilitation_year => self.scheduled_rehabilitation_year.present? ? fiscal_year(self.scheduled_rehabilitation_year) : nil,
+        :scheduled_replacement_year => self.scheduled_replacement_year.present? ? fiscal_year(self.scheduled_replacement_year) : nil,
 
-      :manufacturer_id => self.manufacturer.present? ? self.manufacturer.to_s : nil,
-      :manufacture_year => self.manufacture_year,
+        :manufacturer_id => self.manufacturer.present? ? self.manufacturer.to_s : nil,
+        :manufacture_year => self.manufacture_year,
 
-      :purchase_cost => self.purchase_cost,
-      :purchase_date => self.purchase_date,
-      :purchased_new => self.purchased_new,
-      :warranty_date => self.warranty_date,
-      :in_service_date => self.in_service_date,
-      :vendor_id => self.vendor.present? ? self.vendor.to_s : nil,
+        :purchase_cost => self.purchase_cost,
+        :purchase_date => self.purchase_date,
+        :purchased_new => self.purchased_new,
+        :warranty_date => self.warranty_date,
+        :in_service_date => self.in_service_date,
+        :disposition_date => self.disposition_date,
+        :vendor_id => self.vendor.present? ? self.vendor.to_s : nil,
 
-      :created_at => self.created_at,
-      :updated_at => self.updated_at,
+        :created_at => self.created_at,
+        :updated_at => self.updated_at,
 
-      :tasks => self.tasks.active.count,
-      :comments => self.comments.count,
-      :documents => self.documents.count,
-      :photos => self.images.count,
+        :tasks => self.tasks.active.count,
+        :comments => self.comments.count,
+        :documents => self.documents.count,
+        :photos => self.images.count,
 
-      :tagged => self.tagged?(options[:user]) ? 1 : 0
+        :tagged => self.tagged?(options[:user]) ? 1 : 0
+      }
+
+      if options[:include_early_disposition]
+        json[:early_disposition_notes] = self.early_disposition_notes
+        json[:early_disposition_event_object_key] = self.early_disposition_requests.last.try(:object_key)
+      end
+
+      if self.respond_to? :book_value
+        a = Asset.get_typed_asset self
+        json.merge! a.depreciable_as_json
+      end
+      json
+    end
+  end
+
+  def to_node(selected=nil)
+    node_options = {
+      :text => self.asset_tag,
+      :href => "/inventory/#{self.object_key}",
+      :nodes => self.dependents.distinct.map{|d| d.to_node(selected)}
     }
 
-    if options[:include_early_disposition]
-      json[:early_disposition_notes] = self.early_disposition_notes
-      json[:early_disposition_event_object_key] = self.early_disposition_requests.last.try(:object_key)
+    # expands everything above selected and then selects selected
+    if selected
+      if selected.object_key == self.object_key
+        node_options[:state] ||= {}
+        node_options[:state][:selected] = true
+      end
     end
 
-    if self.respond_to? :book_value
-      a = Asset.get_typed_asset self
-      json.merge! a.depreciable_as_json
+    node_options
+  end
+
+  # get the greatest grand parent of asset or return self if no parents
+  def top_parent
+    top_parent = self
+    while top_parent.parent.present?
+      top_parent = top_parent.parent
     end
-    json
+
+    return top_parent
+  end
+
+  def level
+    level =  1 # asset itself is a level
+
+    current_asset = self
+    while current_asset.parent.present?
+      level += 1
+      current_asset = current_asset.parent
+    end
+
+    return level
+  end
+
+  def relatives
+    relatives = []
+    relatives = self.dependents
+
+    x = self.dependents
+    i = 0
+    while i < x.count
+      relatives << x[i]
+      i += 1
+      x[i].dependents.each{|xx| x << xx}
+    end
+
+    relatives
   end
 
   # Override to_s to return a reasonable default
@@ -435,6 +528,17 @@ class Asset < ActiveRecord::Base
   # Override the getter for vendor name
   def vendor_name
     vendor.name unless vendor.nil?
+  end
+
+  def parent_name
+    parent.to_s unless parent.nil?
+  end
+
+  def parent_key=(object_key)
+    self.parent = Asset.find_by_object_key(object_key)
+  end
+  def parent_key
+    parent.object_key if parent
   end
 
   # Returns true if the asset has one or more tasks that are open
@@ -521,6 +625,10 @@ class Asset < ActiveRecord::Base
 
  def replacement_by_policy?
     true # all assets in core are in replacement cycle. To plan and/or make exceptions to normal schedule, see CPT.
+ end
+
+  def replacement_pinned?
+    false # all assets can be locked into place to prevent sched replacement year changes but by default none are locked
   end
 
   # Returns true if an asset is scheduled for disposition
@@ -668,7 +776,7 @@ class Asset < ActiveRecord::Base
     if policy_to_use.blank?
       policy_to_use = policy
     end
-    policy_analyzer = POLICY_ANALYZER.constantize.new(self, policy_to_use)
+    policy_analyzer = Rails.application.config.policy_analyzer.constantize.new(self, policy_to_use)
   end
   #-----------------------------------------------------------------------------
   # returns the the organizations's policy that governs the replacement of this
@@ -737,11 +845,11 @@ class Asset < ActiveRecord::Base
 
     unless new_record? or disposed?
       if location_updates.empty?
-        self.parent_id = nil
+        self.location_id = nil
         self.location_comments = nil
       else
         event = location_updates.last
-        self.parent_id = event.parent_id
+        self.location_id = event.parent_id
         self.location_comments = event.comments
       end
       # save changes to this asset
@@ -797,18 +905,38 @@ class Asset < ActiveRecord::Base
 
     # can't do this if it is a new record as none of the IDs would be set
     unless new_record? or disposed?
-      if condition_updates.empty?
-        self.reported_condition_date = nil
-        self.reported_condition_rating = nil
-        self.reported_condition_type = ConditionType.find_by(:name => "Unknown")
+      if self.dependents.count > 0
+        calc_from_dependents = self.policy_analyzer.get_condition_rollup_calculation_type.class_name.constantize.new.calculate(self)
+        self.reported_condition_date = self.dependents.order(:reported_condition_date).pluck(:reported_condition_date).last
+        self.reported_condition_rating = calc_from_dependents
+        self.reported_condition_type = ConditionType.from_rating(calc_from_dependents)
+
+        # save changes to this asset
+        save(:validate => false) if save_asset
+
       else
-        event = condition_updates.last
-        self.reported_condition_date = event.event_date
-        self.reported_condition_rating = event.assessed_rating
-        self.reported_condition_type = ConditionType.from_rating(event.assessed_rating)
+        if condition_updates.empty?
+          self.reported_condition_date = nil
+          self.reported_condition_rating = nil
+          self.reported_condition_type = ConditionType.find_by(:name => "Unknown")
+        else
+          event = condition_updates.last
+          self.reported_condition_date = event.event_date
+          self.reported_condition_rating = event.assessed_rating
+          self.reported_condition_type = ConditionType.from_rating(event.assessed_rating)
+        end
+
+        # save changes to this asset
+        save(:validate => false) if save_asset
+
+        affected_parent = self.parent
+        while affected_parent.present?
+          affected_parent.update_condition
+          affected_parent = affected_parent.parent
+        end
       end
-      # save changes to this asset
-      save(:validate => false) if save_asset
+
+
     end
 
   end
@@ -819,7 +947,7 @@ class Asset < ActiveRecord::Base
     Rails.logger.debug "Updating the scheduled replacement year for asset = #{object_key}"
 
     unless new_record? or disposed?
-      if !schedule_replacement_updates.empty?
+      unless schedule_replacement_updates.empty?
         event = schedule_replacement_updates.last
         self.scheduled_replacement_year = event.replacement_year unless event.replacement_year.nil?
         self.replacement_reason_type_id = event.replacement_reason_type_id unless event.replacement_reason_type_id.nil?
@@ -1058,7 +1186,7 @@ class Asset < ActiveRecord::Base
 
     Rails.logger.debug "In before_save_callback"
 
-    return unless self.replacement_by_policy?
+    return unless self.replacement_by_policy? || self.replacement_pinned?
 
     # Get the policy analyzer
     this_policy_analyzer = self.policy_analyzer
@@ -1075,6 +1203,7 @@ class Asset < ActiveRecord::Base
         self.in_backlog = true
         start_date = start_of_fiscal_year(scheduled_replacement_year)
       else
+        self.in_backlog = false
         start_date = start_of_fiscal_year(policy_replacement_year)
       end
       # Update the estimated replacement costs
@@ -1131,7 +1260,7 @@ class Asset < ActiveRecord::Base
   # updates the calculated values of an asset
   def update_asset_state(save_asset = true, policy = nil)
 
-    return unless self.replacement_by_policy?
+    return unless self.replacement_by_policy? || self.replacement_pinned?
 
     Rails.logger.debug "Updating SOGR for asset = #{object_key}"
 
@@ -1146,7 +1275,7 @@ class Asset < ActiveRecord::Base
     policy_analyzer = asset.policy_analyzer
 
     # Use policy to update service life values
-    update_service_life asset
+    asset.update_service_life
 
     # returns the year in which the asset should be replaced based on the policy and asset
     # characteristics
@@ -1160,7 +1289,7 @@ class Asset < ActiveRecord::Base
 
       if asset.scheduled_replacement_year.nil? or asset.scheduled_replacement_year == old_policy_replacement_year
         Rails.logger.debug "Setting scheduled replacement year to #{asset.policy_replacement_year}"
-        asset.scheduled_replacement_year = asset.policy_replacement_year
+        asset.scheduled_replacement_year = asset.policy_replacement_year unless self.replacement_pinned?
         asset.in_backlog = false
       end
       # If the asset is in backlog set the scheduled year to the current FY year
@@ -1198,13 +1327,13 @@ class Asset < ActiveRecord::Base
     asset.save(:validate => false) if save_asset
   end
 
-  def update_service_life typed_asset
+  def update_service_life
     # Get the policy analyzer
-    policy_analyzer = typed_asset.policy_analyzer
+    policy_analyzer = self.policy_analyzer
 
-    typed_asset.purchased_new ?
-        typed_asset.expected_useful_life = policy_analyzer.get_min_service_life_months :
-        typed_asset.expected_useful_life = policy_analyzer.get_min_used_purchase_service_life_months
+    self.purchased_new ?
+        self.expected_useful_life = policy_analyzer.get_min_service_life_months :
+        self.expected_useful_life = policy_analyzer.get_min_used_purchase_service_life_months
   end
 
 

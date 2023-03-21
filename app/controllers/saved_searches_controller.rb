@@ -14,9 +14,9 @@ class SavedSearchesController < OrganizationAwareController
 
     if params[:search_type_id]
       @search_type = SearchType.find_by(id: params[:search_type_id].to_i)
-      @searches = current_user.saved_searches.includes(:search_type).where(search_type_id: @search_type.try(:id))
+      @searches = current_user.all_searches(@search_type.try(:id))
     else
-      @searches = current_user.saved_searches.includes(:search_type)
+      @searches = current_user.all_searches
     end
 
     respond_to do |format|
@@ -89,11 +89,11 @@ class SavedSearchesController < OrganizationAwareController
     respond_to do |format|
       if @search.save
         notify_user :notice, 'Search was successfully saved.'
-        format.html { redirect_to :back }
+        format.html { redirect_back(fallback_location: root_path) }
         format.json { render :show, status: :created, location: @search }
       else
         notify_user :alert, "Cannot save this search because: " + @search.errors.full_messages.join(';')
-        format.html { redirect_to :back }
+        format.html { redirect_back(fallback_location: root_path) }
         format.json { render json: @search.errors, status: :unprocessable_entity }
       end
     end
@@ -106,11 +106,11 @@ class SavedSearchesController < OrganizationAwareController
     respond_to do |format|
       if @search.update(saved_search_params)
         notify_user :notice, 'Search was successfully updated.'
-        format.html { redirect_to :back }
+        format.html { redirect_back(fallback_location: root_path) }
         format.json { render :show, status: :ok, location: @search }
       else
         notify_user :alert, "Cannot update this search because: " + @search.errors.full_messages.join(';')
-        format.html { redirect_to :back }
+        format.html { redirect_back(fallback_location: root_path) }
         format.json { render json: @search.errors, status: :unprocessable_entity }
       end
     end

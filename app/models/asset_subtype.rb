@@ -17,4 +17,23 @@ class AssetSubtype < ActiveRecord::Base
     name
   end
 
+  def api_json(options={})
+    {
+      id: id,
+      asset_type: asset_type.try(:api_json, options),
+      name: name, 
+      description: description
+    }
+  end
+
+  #for bulk updates
+  def self.schema_structure
+    {
+      "enum": AssetSubtype.all.pluck(:name).uniq,
+      "tuple": AssetSubtype.all.map{ |s| {"id": s.id, "val": s.name} },
+      "type": "string",
+      "title": "Subtype"
+    }
+  end
+
 end

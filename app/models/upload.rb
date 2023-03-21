@@ -16,13 +16,13 @@ class Upload < ActiveRecord::Base
   before_destroy    :unassociate_assets_and_events
 
   # Associations
-  belongs_to :user
+  belongs_to :user, -> { unscope(where: :active) }
   belongs_to :organization
   belongs_to :file_status_type
   belongs_to :file_content_type
   # Asset events and assets can be created by bulk update
   has_many   :asset_events
-  has_many   :assets
+  has_many   :assets, class_name: Rails.application.config.asset_base_class_name
 
   # uploader
   mount_uploader :file, ExcelUploader
@@ -118,7 +118,7 @@ class Upload < ActiveRecord::Base
 
     if assets.empty?
       asset_events.each do |evt|
-        updates << [evt.asset, evt]
+        updates << [evt.send(Rails.application.config.asset_base_class_name.underscore), evt]
       end
     else
       assets.each do |a|

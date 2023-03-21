@@ -1,23 +1,27 @@
 class ReportsController < OrganizationAwareController
 
-  before_filter :get_report, :only => [:show, :load]
+  before_action :get_report, :only => [:show, :load]
+
+  # Lock down the controller
+  #authorize_resource only: [:index, :show]
 
   add_breadcrumb "Home", :root_path
-  add_breadcrumb "Reports", :reports_path
 
   SESSION_VIEW_TYPE_VAR = 'reports_subnav_view_type'
 
   def index
-
     # remember the view type
     @view_type = get_view_type(SESSION_VIEW_TYPE_VAR)
 
     @reports = []
 
     if params[:report_type]
-      active_reports = Report.active.where(report_type: params[:report_type])
+      report_type = ReportType.find(params[:report_type])
+      active_reports = Report.active.where(report_type: report_type)
+      add_breadcrumb report_type.name.pluralize, reports_path(report_type: report_type.id)
     else
       active_reports = Report.active
+      add_breadcrumb "Reports", :reports_path
     end
 
     active_reports.each do |rep|
@@ -67,9 +71,11 @@ class ReportsController < OrganizationAwareController
   # a different respond_to block.
   def handle_show &block
     @report_filter_type = params[:report_filter_type]
+    @class_filter_type = params[:class_filter_type]
     @asset_types = []
+    @class_types  = []
     AssetType.active.each do |at|
-      count = Asset.where('assets.organization_id IN (?) AND assets.asset_type_id = ?', @organization_list, at.id).count
+      count = Rails.application.config.asset_base_class_name.constantize.where(organization_id: @organization_list, asset_subtype_id: at.id).count
       if count > 0
         @asset_types << [at.name, at.id]
       end
@@ -77,18 +83,25 @@ class ReportsController < OrganizationAwareController
 
     if @report
       @report_view = @report.view_name
+      add_breadcrumb @report.report_type.name.pluralize, reports_path(report_type: @report.report_type.id)
       add_breadcrumb @report.name
-
+      
       @report_instance = @report.class_name.constantize.new(params)
       # inject the sql for the report into the params
       params[:sql] = @report.custom_sql unless @report.custom_sql.blank?
       # get the report data
       @data = @report_instance.get_data(@organization_list, params)
-
-      yield
+      @class_types = @report_instance.try(:get_classes)
+      # String return value indicates an error message.
+      if @data.is_a? String
+        notify_user(:alert, @data)
+        redirect_to report_path(@report)
+      else
+        yield
+      end
     end
   end
-  
+
   # Returns the selected report
   def get_report
     # load this report and create the report instance

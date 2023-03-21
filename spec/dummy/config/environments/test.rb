@@ -14,7 +14,7 @@ Dummy::Application.configure do
   config.eager_load = false
 
   # Configure static asset server for tests with Cache-Control for performance.
-  config.serve_static_assets  = true
+  config.serve_static_files  = true
   config.static_cache_control = 'public, max-age=3600'
 
   # Show full error reports and disable caching.
@@ -38,4 +38,11 @@ Dummy::Application.configure do
   ENV["SYSTEM_SEND_FROM_ADDRESS"] = "donotreply@camsys-apps.com"
   # Raises error for missing translations
   # config.action_view.raise_on_missing_translations = true
+
+  # Required for CloudWatch in PutMetricDataService.
+  ENV["AWS_REGION"] = "us-east-1"
+  
+  config.after_initialize do
+    Rails.application.routes.default_url_options[:host] = 'localhost:3000'
+  end
 end

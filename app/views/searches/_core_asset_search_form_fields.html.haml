@@ -51,9 +51,9 @@
       .col-md-3
         %fieldset
           %legend.panel-legend Funding, Value
-          = f.input :fta_funding_type_id, :label => "Fta Funding Type", :collection => FtaFundingType.active, :label_method => :to_s, input_html: { multiple: true }
-          = f.input :sourceable_id, :label => GrantPurchase.label, :collection => GrantPurchase.sources, input_html: { multiple: true }
-          = f.input :purchase_cost, :label => "Purchase Cost", :wrapper => :vertical_prepend do
+          = f.input :fta_funding_type_id, :label => "FTA Funding Type", :collection => FtaFundingType.active, :label_method => :to_s, input_html: { multiple: true }
+          = f.input :sourceable_id, :label => 'Funding Program', :collection => FundingSource.all, input_html: { multiple: true } # grant purchases through funding sources
+          = f.input :purchase_cost, :label => "Cost (Purchase)", :wrapper => :vertical_prepend do
             .input-group-btn
               %button.btn.btn-default.dropdown-toggle{"data-toggle" => "dropdown", :type => "button"}
               %ul.dropdown-menu{:role => "menu"}
@@ -64,7 +64,7 @@
                 %li
                   %a{:data => {:compare => "1"}} Greater Than
               = f.input_field :purchase_cost_comparator, :as => :hidden, :value => '0'
-            = f.input_field :purchase_cost, :class => "form-control", :as => :integer, :label => "Original Purchase Cost", input_html: { :min => '0'}
+            = f.input_field :purchase_cost, :class => "form-control", :as => :integer, :label => "Original Cost (Purchase)", input_html: { :min => '0'}
           = f.input :book_value, :label => "Book Value", :wrapper => :vertical_prepend do
             .input-group-btn
               %button.btn.btn-default.dropdown-toggle{"data-toggle" => "dropdown", :type => "button"}
@@ -78,6 +78,21 @@
               = f.input_field :book_value_comparator, :as => :hidden, :value => '0'
             = f.input_field :book_value, :class => "form-control", :as => :integer, :label => "Book Value", input_html: { :min => '0'}
 
+          .not-for-equipment
+            = f.input :direct_capital_responsibility, :as => :boolean, :label => "Direct Capital Responsibility", :label_html => { :class => 'bold' }
+            = f.input :pcnt_capital_responsibility, :label => "Percent Capital Responsibility", :wrapper => :vertical_prepend do
+              .input-group-btn
+                %button.btn.btn-default.dropdown-toggle{"data-toggle" => "dropdown", :type => "button"}
+                %ul.dropdown-menu{:role => "menu"}
+                  %li
+                    %a{:data => {:compare => "-1"}} Less Than
+                  %li
+                    %a{:data => {:compare => "0"}} Equal To
+                  %li
+                    %a{:data => {:compare => "1"}} Greater Than
+                = f.input_field :pcnt_capital_responsibility_comparator, :as => :hidden, :value => '0'
+              = f.input_field :pcnt_capital_responsibility, :class => "form-control", :as => :integer,  input_html: { :min => '0', :max => 100}
+
       .col-md-3
         %fieldset
           %legend.panel-legend Condition & Status
@@ -85,7 +100,8 @@
           = f.input :reported_condition_type_id, :label => "Reported Condition Type", :collection => ConditionType.active, input_html: { multiple: true }
           = f.input :in_backlog, :as => :boolean, :label => "In Backlog"
           = f.input :purchased_new, :as => :boolean, :label => "Purchased New", :label_html => { :class => 'bold' }
-          = f.input :early_replacement, :as => :boolean, :label => "Early Replacement", :label_html => { :class => 'bold' }
+          = f.input :early_replacement, :as => :boolean, :label => "Scheduled for Early Replacement", :label_html => { :class => 'bold' }
+          = f.input :disposed_early, :as => :boolean, :label => "Disposed Early", :label_html => { :class => 'bold' }
 
 
       .col-md-3
@@ -132,7 +148,7 @@
                 %li
                   %a{:data => {:compare => "1"}} After
               = f.input_field :scheduled_replacement_year_comparator, :as => :hidden, :value => '0'
-            = f.input_field :scheduled_replacement_year, :collection => get_fiscal_years, :class => "form-control"
+            = f.input_field :scheduled_replacement_year, :as => :fiscal_year, :class => "form-control"
           = f.input :policy_replacement_year, :wrapper => :vertical_prepend, :label => "Policy Replacement Year" do
             .input-group-btn
               %button.btn.btn-default.dropdown-toggle{"data-toggle" => "dropdown", :type => "button"}
@@ -144,7 +160,7 @@
                 %li
                   %a{:data => {:compare => "1"}} After
               = f.input_field :policy_replacement_year_comparator, :as => :hidden, :value => '0'
-            = f.input_field :policy_replacement_year, :collection => get_fiscal_years, :class => "form-control"
+            = f.input_field :policy_replacement_year, :as => :fiscal_year, :class => "form-control"
 
 
         - view_component = "app_core_asset_search_form_common_fields"

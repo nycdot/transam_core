@@ -38,7 +38,7 @@ module TransamKeywordSearchable
       if kwsi.present?
         kwsi.destroy
       else
-        raise RuntimeError, "Can't find #{self.name} with object_key #{object_key}"
+        Rails.logger.info "Can't find #{self.name} with object_key #{object_key}"
       end
     end
 
@@ -47,6 +47,10 @@ module TransamKeywordSearchable
   #-----------------------------------------------------------------------------
   # Class Methods
   #-----------------------------------------------------------------------------
+
+  module ClassMethods
+
+  end
 
   # Returns a collection of classes that implement TransamKeywordSearchable
   def self.implementors
@@ -69,7 +73,12 @@ module TransamKeywordSearchable
     a = []
     separator = " "
     searchable_fields.each { |searchable_field|
-      a << self.send(searchable_field).to_s
+      if Rails.application.config.asset_base_class_name == self.class.to_s
+        a << Rails.application.config.asset_base_class_name.constantize.get_typed_asset(self).send(searchable_field).to_s
+      else
+        a << self.send(searchable_field).to_s
+      end
+
     }
     text = a.uniq.compact.join(' ')
 
@@ -78,10 +87,10 @@ module TransamKeywordSearchable
     keyword_search_index.organization_id = self.organization.id
     keyword_search_index.context = self.class.name
     keyword_search_index.search_text = text
-    if self.is_a?(Asset)
+    if self.is_a?(Rails.application.config.asset_base_class_name.constantize)
       # Don't create keyword indexes for keyword assets
       incomplete_transferred_asset? ? should_write_to_index = false : should_write_to_index = true
-      keyword_search_index.object_class = "Asset"
+      keyword_search_index.object_class = Rails.application.config.asset_base_class_name
     else
       keyword_search_index.object_class = self.class.name
     end
@@ -109,7 +118,11 @@ module TransamKeywordSearchable
     a = []
     separator = " "
     searchable_fields.each { |searchable_field|
-      a << self.send(searchable_field).to_s
+      if Rails.application.config.asset_base_class_name == self.class.to_s
+        a << Rails.application.config.asset_base_class_name.constantize.get_typed_asset(self).send(searchable_field).to_s
+      else
+        a << self.send(searchable_field).to_s
+      end
     }
     text = a.uniq.compact.join(' ')
 
@@ -117,9 +130,9 @@ module TransamKeywordSearchable
     keyword_search_index.organization_id = self.organization.id if self.organization
     keyword_search_index.context = self.class.name
     keyword_search_index.search_text = text
-    if self.is_a?(Asset)
+    if self.is_a?(Rails.application.config.asset_base_class_name.constantize)
       incomplete_transferred_asset? ? should_write_to_index = false : should_write_to_index = true
-      keyword_search_index.object_class = "Asset"
+      keyword_search_index.object_class = Rails.application.config.asset_base_class_name
     else
       keyword_search_index.object_class = self.class.name
     end
@@ -151,7 +164,7 @@ module TransamKeywordSearchable
     searchable_fields.each do |searchable_field|
       Rails.logger.debug "Testing property #{searchable_field}"
 
-      if self.changes.include? searchable_field.to_s
+      if (self.changes.include? searchable_field.to_s) || self.is_a?(Rails.application.config.asset_base_class_name.constantize)
         Rails.logger.debug "#{searchable_field.to_s} has changed"
         self.is_dirty = true
         return
@@ -190,6 +203,6 @@ module TransamKeywordSearchable
 
   # Determines if an asset is transferred
   def incomplete_transferred_asset?
-    return self.is_a?(Asset) && self.object_key.to_s == self.asset_tag.to_s
+    return self.is_a?(Rails.application.config.asset_base_class_name.constantize) && self.object_key.to_s == self.asset_tag.to_s
   end
 end

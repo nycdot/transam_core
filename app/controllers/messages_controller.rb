@@ -2,8 +2,11 @@ class MessagesController < OrganizationAwareController
 
   add_breadcrumb "Home", :root_path
 
-  before_action :set_message, :only => [:show, :edit, :update, :destroy, :tag, :reply, :destroy]
+  before_action :set_message, :only => [:show, :destroy, :tag, :reply]
   before_action :check_for_cancel, :only => [:create]
+
+  # Lock down the controller
+  authorize_resource only: [:index, :show, :new, :create, :destroy]
 
   # Session Variables
   INDEX_KEY_LIST_VAR          = "messages_list_cache_var"
@@ -55,25 +58,32 @@ class MessagesController < OrganizationAwareController
     end
 
     # No response needed
-    render :nothing => true
+    render body: current_user
 
   end
 
   def show
 
-    add_breadcrumb "My Messages", user_messages_path(current_user)
-    add_breadcrumb @message.subject, user_message_path(current_user, @message)
+    if (can? :manage, MessageTemplate) && @message.to_user != current_user
+      add_breadcrumb "Message History" , message_history_message_templates_path
+      add_breadcrumb @message.subject, user_message_path(@message.to_user, @message)
+    else
+      add_breadcrumb "My Messages", user_messages_path(current_user)
+      add_breadcrumb @message.subject, user_message_path(current_user, @message)
+    end
 
-    @response = Message.new
-    @response.organization = @organization
-    @response.user = current_user
-    @response.priority_type = @message.priority_type
+    if current_user == @message.to_user
+      @response = Message.new
+      @response.organization = @organization
+      @response.user = current_user
+      @response.priority_type = @message.priority_type
 
-    # Mark this message as opened if not opened previously as long as the current_user
-    # is the message recipient
-    if @message.opened_at.nil? and current_user == @message.to_user
-      @message.opened_at = Time.current
-      @message.save
+      # Mark this message as opened if not opened previously as long as the current_user
+      # is the message recipient
+      if @message.opened_at.nil?
+        @message.opened_at = Time.current
+        @message.save
+      end
     end
 
     # get the @prev_record_path and @next_record_path view vars
@@ -196,7 +206,7 @@ class MessagesController < OrganizationAwareController
 
   def destroy
     @message.active = false
-    @message.save(:validate => :false)
+    @message.save(:validate => false)
     respond_to do |format|
       notify_user(:notice, "Message has been deleted.")
       format.html { redirect_to user_messages_url(current_user) }

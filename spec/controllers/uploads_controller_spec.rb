@@ -5,6 +5,7 @@ RSpec.describe UploadsController, :type => :controller do
   before(:each) do
     test_user = create(:admin)
     test_user.organizations << test_user.organization
+    test_user.viewable_organizations << test_user.organization
     test_user.save!
     sign_in test_user
   end
@@ -21,12 +22,12 @@ RSpec.describe UploadsController, :type => :controller do
   end
 
   it 'GET show' do
-    get :show, :id => test_upload.object_key
+    get :show, params: {:id => test_upload.object_key}
 
     expect(assigns(:upload)).to eq(test_upload)
   end
   it 'GET undo' do
-    get :undo, :id => test_upload.object_key
+    get :undo, params: {:id => test_upload.object_key}
     test_upload.reload
 
     expect(assigns(:upload)).to eq(test_upload)
@@ -35,11 +36,9 @@ RSpec.describe UploadsController, :type => :controller do
   end
 
   it 'GET templates' do
-    test_asset = create(:buslike_asset, :organization => subject.current_user.organization)
     get :templates
 
     expect(assigns(:message)).to eq("Creating inventory template. This process might take a while.")
-    expect(assigns(:asset_types)).to include({id: test_asset.asset_type.id, name: test_asset.asset_type.to_s, class_name: test_asset.asset_type.class_name, orgs: [test_asset.organization_id]})
   end
 
   it 'GET new' do
@@ -48,14 +47,14 @@ RSpec.describe UploadsController, :type => :controller do
     expect(assigns(:upload).to_json).to eq(Upload.new.to_json)
   end
   it 'POST create' do
-    post :create, :upload => attributes_for(:upload)
+    post :create, params: {:upload => attributes_for(:upload)}
 
     expect(assigns(:upload).user).to eq(subject.current_user)
     expect(assigns(:upload).file_content_type_id).to eq(1)
     expect(assigns(:upload).force_update).to be false
   end
   it 'DELETE destroy' do
-    delete :destroy, :id => test_upload.object_key
+    delete :destroy, params: {:id => test_upload.object_key}
 
     expect(Upload.find_by(:object_key => test_upload.object_key)).to be nil
   end

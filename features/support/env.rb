@@ -7,10 +7,9 @@
 ENV["RAILS_ENV"] ||= "test" # had to explicity state the test environment (or cucumber env.)
 ENV["RAILS_ROOT"] = File.expand_path(File.dirname(__FILE__) + '/../../spec/dummy/')
 require File.expand_path(File.dirname(__FILE__) + '/../../spec/dummy/config/environment')
+require File.expand_path(File.dirname(__FILE__) + '/../../spec/rails_helper')
 
 require 'cucumber/rails'
-
-require 'factory_girl_rails'
 
 # Capybara defaults to CSS3 selectors rather than XPath.
 # If you'd prefer to use XPath, just uncomment this line and adjust any
@@ -59,7 +58,7 @@ end
 #
 
 # This will prevent the deletion of the data written in the test db until the end of the cucumber feature
-Cucumber::Rails::World.use_transactional_fixtures = false
+Cucumber::Rails::World.use_transactional_tests = false
 
 # Possible values are :truncation and :transaction
 # The :transaction strategy is faster, but might give you threading problems.

@@ -1,12 +1,56 @@
 class ImagesController < NestedResourceController
   before_action :set_image, :only => [:edit, :update, :destroy, :download]
 
+  # Lock down the controller
+  authorize_resource only: [:index, :new, :create, :edit, :update, :destroy]
+
   # GET /images
   # GET /images.json
   def index
+    if params[:global_base_imagable]
+      @imagable = GlobalID::Locator.locate(GlobalID.parse(params[:global_base_imagable]))
+      @images = Image.where(base_imagable: @imagable)
+    elsif params[:global_any_imagable] # parameter to return images of self as parent and children
+      @imagable = GlobalID::Locator.locate(GlobalID.parse(params[:global_any_imagable]))
+      @images = Image.where(base_imagable: @imagable).or(Image.where(imagable: @imagable))
+    else
+      @imagable = find_resource
+      @images = @imagable.images
+    end
 
-    @imagable = find_resource
-    @images = @imagable.images
+    if @imagable
+
+      if params[:sort].present? && params[:order].present?
+        if params[:sort] == 'creator'
+          @images = @images.joins(:creator).reorder("CONCAT(users.first_name, ' ', users.last_name) #{params[:order]}")
+        else
+          @images = @images.reorder(params[:sort] => params[:order])
+        end
+      end
+    else
+      Rails.logger.debug "No images"
+      @images = Image.none
+    end
+
+    @images = @images.left_outer_joins(:image_classification)
+
+    respond_to do |format|
+      format.html # index.html.erb
+      format.json {
+        render :json => {
+            :total => @images.count,
+            :rows => @images.limit(params[:limit]).offset(params[:offset]).collect{ |u|
+              u.as_json.merge!({
+                classification: u.image_classification&.to_s,
+                link_image: view_context.link_to(view_context.image_tag(u.image.url(:thumb)), u.image.url,  :class => "img-responsive gallery-image", :data => {:lightbox => "gallery"}, :title => u.original_filename),
+                imagable: u.imagable.as_json,
+                creator: u.creator.to_s
+               })
+            }
+        }
+      }
+
+    end
 
   end
 
@@ -15,13 +59,16 @@ class ImagesController < NestedResourceController
     @image = Image.new
     @imagable = find_resource
 
+    puts @imagable.inspect
+
+    @form_view = params[:form_view]
+
   end
 
   # GET /images/1/edit
   def edit
-
     @imagable = @image.imagable
-
+    @form_view = params[:form_view]
   end
 
   def download
@@ -41,14 +88,22 @@ class ImagesController < NestedResourceController
   # POST /images
   # POST /images.json
   def create
-    @imagable = find_resource
-    @image = @imagable.images.build(form_params)
+    @form_view = params[:form_view]
+
+    @image = Image.new(form_params)
+    if @image.imagable.nil?
+      @imagable = find_resource
+      @image.imagable = @imagable
+    end
+
+    @image.base_imagable = @image.imagable if @image.base_imagable.nil?
+
     @image.creator = current_user
     
     respond_to do |format|
       if @image.save
         notify_user(:notice, 'Image was successfully created.')
-        format.html { redirect_to (params[:redirect_to].present? ? params[:redirect_to] : @imagable) }
+        format.html { redirect_back(fallback_location: root_path) }
         format.json { render action: 'show', status: :created, location: @image }
       else
         format.html { render action: 'new' }
@@ -60,13 +115,14 @@ class ImagesController < NestedResourceController
   # PATCH/PUT /images/1
   # PATCH/PUT /images/1.json
   def update
+    @form_view = params[:form_view]
 
     @imagable = @image.imagable
 
     respond_to do |format|
       if @image.update(form_params)
         notify_user(:notice, 'Image was successfully updated.')
-        format.html { redirect_to get_resource_url(@imagable) }
+        format.html { redirect_back(fallback_location: root_path) }
         format.json { head :no_content }
       else
         format.html { render action: 'edit' }
@@ -84,7 +140,7 @@ class ImagesController < NestedResourceController
 
     notify_user(:notice, 'Image was successfully removed.')
     respond_to do |format|
-      format.html { redirect_to :back }
+      format.html { redirect_back(fallback_location: root_path) }
       format.json { head :no_content }
     end
   end

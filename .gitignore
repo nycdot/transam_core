@@ -1,3 +1,4 @@
+app/helpers/doc/*
 **.orig
 **.sqlite3
 *.rbc
@@ -25,3 +26,15 @@ rerun.txt
 *.idea
 
 TAGS
+
+*.axlsx~
+
+shadowed_views.log
+*.rb~
+*.haml~
+*.erb~
+*.jbuilder~
+.byebug_history
+*.scss~
+*.sql~
+*.js~

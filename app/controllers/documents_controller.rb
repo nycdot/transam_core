@@ -1,5 +1,9 @@
 class DocumentsController < NestedResourceController
   before_action :set_document, :only => [:edit, :update, :destroy, :download]
+  before_action :format_dates, :only => [:create, :update]
+
+  # Lock down the controller
+  authorize_resource only: [:index, :new, :create, :edit, :update, :destroy]
 
   # GET /documents
   # GET /documents.json
@@ -47,11 +51,13 @@ class DocumentsController < NestedResourceController
     respond_to do |format|
       if @document.save
         notify_user(:notice, 'Document was successfully created.')
-        format.html { redirect_to :back }
+        format.html { redirect_back(fallback_location: root_path) }
         format.json { render action: 'show', status: :created, location: @document }
+        format.js { @asset = @document.documentable }
       else
         format.html { render action: 'new' }
         format.json { render json: @document.errors, status: :unprocessable_entity }
+        format.js { render action: 'new' }
       end
     end
   end
@@ -83,7 +89,7 @@ class DocumentsController < NestedResourceController
 
     notify_user(:notice, 'Document was successfully removed.')
     respond_to do |format|
-      format.html { redirect_to :back }
+      format.html { redirect_back(fallback_location: root_path) }
       format.json { head :no_content }
     end
   end
@@ -102,6 +108,14 @@ class DocumentsController < NestedResourceController
   # Never trust parameters from the scary internet, only allow the white list through.
   def document_params
     params.require(:document).permit(Document.allowable_params)
+  end
+
+  def format_dates
+    params[:document].select{|p| p.end_with?("_date")}.each do |p|
+      unless p[1].match(/\A\d{4}-\d{2}-\d{2}\z/)
+        params[:document][p[0]] = Date.strptime(p[1], '%m/%d/%Y').strftime('%Y-%m-%d')
+      end
+    end
   end
 
 end

@@ -14,6 +14,7 @@ class Vendor < ActiveRecord::Base
   # Callbacks
   #------------------------------------------------------------------------------
   after_initialize  :set_defaults
+  before_save :remove_apostrophe
 
   #------------------------------------------------------------------------------
   # Associations common to all vendors
@@ -89,6 +90,10 @@ class Vendor < ActiveRecord::Base
     SEARCHABLE_FIELDS
   end
 
+  def api_json(options={})
+    as_json(options)
+  end
+
   #------------------------------------------------------------------------------
   #
   # Protected Methods
@@ -100,6 +105,11 @@ class Vendor < ActiveRecord::Base
   def set_defaults
     self.active = self.active.nil? ? true : self.active
     self.state ||= SystemConfig.instance.default_state_code
+  end
+
+  # Apostrophe's break the form helpers in the vendor name.
+  def remove_apostrophe
+    self.name = self.name.gsub("'","")
   end
 
 end

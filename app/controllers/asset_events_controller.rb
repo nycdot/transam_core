@@ -3,16 +3,80 @@ class AssetEventsController < AssetAwareController
   add_breadcrumb "Home", :root_path
 
   # set the @asset_event variable before any actions are invoked
-  before_filter :get_asset_event,       :only => [:show, :edit, :update, :destroy, :fire_workflow_event]
-  before_filter :check_for_cancel,      :only => [:create, :update]
-  before_filter :reformat_date_field,   :only => [:create, :update]
+  before_action :get_asset_event,       :only => [:show, :edit, :update, :destroy, :fire_workflow_event, :popup]
+  before_action :check_for_cancel,      :only => [:create, :update]
+  before_action :reformat_date_field,   :only => [:create, :update]
+
+  skip_before_action :get_asset,        :only => [:get_summary, :popup]
 
   # always use generic untyped assets for this controller
   RENDER_TYPED_ASSETS = true
 
+  # Lock down the controller
+  authorize_resource only: [:index, :show, :new, :create, :edit, :update, :destroy]
+
   # always render untyped assets for this controller
   def render_typed_assets
     RENDER_TYPED_ASSETS
+  end
+
+  def get_summary
+    asset_event_type = AssetEventType.find_by(id: params[:asset_event_type_id])
+
+    unless asset_event_type.nil?
+      asset_event_klass = asset_event_type.class_name.constantize
+
+      if params[:order].blank?
+        results = asset_event_klass.all
+      else
+        results = asset_event_klass.unscoped.order(params[:order])
+      end
+
+      if asset_event_klass.count > 0
+        asset_klass = asset_event_klass.first.send(Rails.application.config.asset_base_class_name.underscore).class
+
+        asset_joins = [Rails.application.config.asset_base_class_name.underscore]
+
+        while asset_klass.try(:acting_as_name)
+          asset_joins << asset_klass.acting_as_name
+          asset_klass = asset_klass.acting_as_name.classify.constantize
+        end
+
+
+        idx = asset_joins.length-2
+        join_relations = Hash.new
+        join_relations[asset_joins[idx]] = asset_joins[idx+1]
+        idx -= 1
+        while idx >= 0
+          tmp = Hash.new
+          tmp[asset_joins[idx]] = join_relations
+          join_relations = tmp
+          idx -= 1
+        end
+
+        results = results.includes(join_relations).where(transam_asset: asset_event_klass.first.send(Rails.application.config.asset_base_class_name.underscore).class.where(organization_id: @organization_list))
+      end
+
+      unless params[:scope].blank?
+        if asset_event_klass.respond_to? params[:scope]
+          results = results.send(params[:scope])
+        end
+      end
+
+
+
+
+      respond_to do |format|
+        format.js {
+          render partial: "dashboards/#{asset_event_type.class_name.underscore}_widget_table", locals: {results: results }
+        }
+      end
+
+    end
+  end
+
+  def popup
+
   end
 
   def index
@@ -73,7 +137,9 @@ class AssetEventsController < AssetAwareController
     add_new_show_create_breadcrumbs
 
     respond_to do |format|
+      @ajax_request = ajax_request?
       format.html
+      format.js
       format.json { render :json => @asset_event }
     end
 
@@ -109,9 +175,23 @@ class AssetEventsController < AssetAwareController
 
     add_edit_update_breadcrumbs
 
+    respond_to do |format|
+      @ajax_request = ajax_request?
+      format.html
+      format.js
+      format.json { render :json => @asset_event }
+    end
+
   end
 
   def update
+
+    # get variables for updating view via JS if form sent remotely
+    @ajax_request = ajax_request?
+    if @ajax_request
+      @view_div = params[:view_div]
+      @view_name = params[:view_name]
+    end
 
     # if not found or the object does not belong to the asset
     # send them back to index.html.erb
@@ -121,20 +201,25 @@ class AssetEventsController < AssetAwareController
       return
     end
 
+    @asset_event.updater = current_user
+
     add_edit_update_breadcrumbs
 
     respond_to do |format|
       if @asset_event.update_attributes(form_params)
 
         notify_user(:notice, "Event was successfully updated.")
+        Rails.cache.delete("inventory_api" + @asset.object_key)
 
         # The event was updated so we need to update the asset.
-        fire_asset_update_event(@asset_event.asset_event_type, @asset)
+        #fire_asset_update_event(@asset_event.asset_event_type, @asset)
 
         format.html { redirect_to inventory_url(@asset) }
+        format.js
         format.json { head :no_content }
       else
         format.html { render "edit" }
+        format.js { render "edit" }
         format.json { render :json => @asset_event.errors, :status => :unprocessable_entity }
       end
     end
@@ -142,11 +227,25 @@ class AssetEventsController < AssetAwareController
 
   def create
 
+    # get variables for updating view via JS if form sent remotely
+
+    @ajax_request = ajax_request?
+    if @ajax_request
+      @view_div = params[:view_div]
+      @view_name = params[:view_name]
+    end
+
     # we need to know what the event type was for this event
     asset_event_type = AssetEventType.find(params[:event_type])
     unless asset_event_type.blank?
-      @asset_event = @asset.build_typed_event(asset_event_type.class_name.constantize)
+      assoc_name = asset_event_type.class_name.gsub('Event', '').underscore.pluralize
+      assoc_name = 'early_disposition_requests' if assoc_name == 'early_disposition_request_updates'
+      owner = @asset.send(assoc_name).proxy_association.owner
+      asset_params = Hash.new
+      asset_params[Rails.application.config.asset_base_class_name.underscore] = owner
+      @asset_event = asset_event_type.class_name.constantize.new(form_params.merge(asset_params))
       @asset_event.creator = current_user
+      @asset_event.updater = current_user
     end
 
     unless params[:causal_asset_event_id].nil?
@@ -160,13 +259,14 @@ class AssetEventsController < AssetAwareController
     add_new_show_create_breadcrumbs
 
     respond_to do |format|
-      if @asset_event.update(form_params)
+      if @asset_event.save
         Rails.logger.debug @asset_event.inspect
 
         notify_user(:notice, "Event was successfully created.")
+        Rails.cache.delete("inventory_api" + @asset.object_key)
 
         # The event was removed so we need to update the asset
-        fire_asset_update_event(@asset_event.asset_event_type, @asset)
+        #fire_asset_update_event(@asset_event.asset_event_type, @asset)
 
         # if notification enabled, then send out
         if @asset_event.class.try(:workflow_notification_enabled?)
@@ -183,10 +283,12 @@ class AssetEventsController < AssetAwareController
         end
 
         format.html { redirect_to inventory_url(@asset) }
+        format.js
         format.json { render :json => @asset_event, :status => :created, :location => @asset_event }
       else
         Rails.logger.debug @asset_event.errors.inspect
         format.html { render :action => "new" }
+        format.js { render :action => "new" }
         format.json { render :json => @asset_event.errors, :status => :unprocessable_entity }
       end
     end
@@ -206,9 +308,10 @@ class AssetEventsController < AssetAwareController
     @asset_event.destroy
 
     notify_user(:notice, "Event was successfully removed.")
+    Rails.cache.delete("inventory_api" + @asset.object_key)
 
     # The event was removed so we need to update the asset condition
-    fire_asset_update_event(asset_event_type, @asset)
+    #fire_asset_update_event(asset_event_type, @asset)
 
     respond_to do |format|
       format.html { redirect_to(inventory_url(@asset)) }
@@ -229,8 +332,11 @@ class AssetEventsController < AssetAwareController
       if asset_event_class.name == 'EarlyDispositionRequestUpdateEvent' && event_name == "approve_via_transfer"
         is_redirected = true
         # we do not want to fire approval of the application event approval
-        redirect_to new_inventory_asset_event_path(@asset_event.asset, :event_type => DispositionUpdateEvent.asset_event_type.id, :transferred => 1, :causal_asset_event_id => @asset_event.object_key, :causal_asset_event_name => event_name)
+        redirect_to new_inventory_asset_event_path(@asset_event.send(Rails.application.config.asset_base_class_name.underscore), :event_type => DispositionUpdateEvent.asset_event_type.id, :transferred => 1, :causal_asset_event_id => @asset_event.object_key, :causal_asset_event_name => event_name)
       elsif @asset_event.fire_state_event(event_name)
+
+        @asset_event.update_columns(updated_by_id: current_user.id)
+
         event = WorkflowEvent.new
         event.creator = current_user
         event.accountable = @asset_event
@@ -250,7 +356,9 @@ class AssetEventsController < AssetAwareController
       notify_user(:alert, "#{params[:event_name]} is not a valid event for a #{asset_event_class.name}")
     end
 
-    redirect_to(:back) unless is_redirected
+    unless is_redirected
+      redirect_back fallback_location: root_path
+    end
 
   end
 
@@ -292,6 +400,24 @@ class AssetEventsController < AssetAwareController
     end
   end
 
+  def add_asset_breadcrumbs
+    add_breadcrumb @asset.asset_type.name.pluralize(2), inventory_index_path(:asset_type => @asset.asset_type, :asset_subtype => 0)
+    add_breadcrumb @asset.asset_subtype.name.pluralize(2), inventory_index_path(:asset_subtype => @asset.asset_subtype)
+    add_breadcrumb @asset.asset_tag, inventory_path(@asset)
+  end
+
+  def add_new_show_create_breadcrumbs
+    add_asset_breadcrumbs
+    add_breadcrumb "#{@asset_event.asset_event_type.name} Update"
+  end
+
+  def add_edit_update_breadcrumbs
+    add_asset_breadcrumbs
+    add_breadcrumb @asset_event.asset_event_type.name, edit_inventory_asset_event_path(@asset, @asset_event)
+    add_breadcrumb "Update"
+  end
+
+
   #------------------------------------------------------------------------------
   #
   # Private Methods
@@ -310,23 +436,6 @@ class AssetEventsController < AssetAwareController
   # Never trust parameters from the scary internet, only allow the white list through.
   def form_params
     params.require(:asset_event).permit(asset_event_allowable_params)
-  end
-
-  def add_new_show_create_breadcrumbs
-    add_asset_breadcrumbs
-    add_breadcrumb @asset_event.asset_event_type.name
-  end
-
-  def add_edit_update_breadcrumbs
-    add_asset_breadcrumbs
-    add_breadcrumb @asset_event.asset_event_type.name, edit_inventory_asset_event_path(@asset, @asset_event)
-    add_breadcrumb "Update"
-  end
-
-  def add_asset_breadcrumbs
-    add_breadcrumb @asset.asset_type.name.pluralize(2), inventory_index_path(:asset_type => @asset.asset_type, :asset_subtype => 0)
-    add_breadcrumb @asset.asset_subtype.name.pluralize(2), inventory_index_path(:asset_subtype => @asset.asset_subtype)
-    add_breadcrumb @asset.asset_tag, inventory_path(@asset)
   end
 
   def check_for_cancel

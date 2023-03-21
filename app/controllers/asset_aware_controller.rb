@@ -4,7 +4,7 @@
 #
 class AssetAwareController < OrganizationAwareController
   # set the @asset variable before any actions are invoked
-  before_filter :get_asset
+  before_action :get_asset
 
   # From the application config
   MAX_RETURNS_FOR_SEARCH = Rails.application.config.ui_search_items
@@ -14,35 +14,13 @@ class AssetAwareController < OrganizationAwareController
   RENDER_TYPED_ASSETS = true
 
   # returns details for an asset subtype using an ajax query
+  # NOT USED
   def details
     @asset_subtype = AssetSubtype.find(params[:asset_subtype])
 
     respond_to do |format|
       format.js
       format.json { render :json => @asset_subtype.to_json }
-    end
-
-  end
-
-  # Returns a JSON array of matching asset subtypes based on a typeahead name or description
-  def filter
-
-    query = params[:query]
-    query_str = "%" + query + "%"
-    Rails.logger.debug query_str
-
-    matches = []
-    assets = Asset.where("organization_id in (?) AND (asset_tag LIKE ? OR object_key LIKE ? OR description LIKE ?)", @organization_list, query_str, query_str, query_str)
-    assets.each do |asset|
-      matches << {
-        "id" => asset.object_key,
-        "name" => "#{asset.name}: #{asset.description}"
-      }
-    end
-
-    respond_to do |format|
-      format.js { render :json => matches.to_json }
-      format.json { render :json => matches.to_json }
     end
 
   end
@@ -61,25 +39,20 @@ class AssetAwareController < OrganizationAwareController
   # otherwise a base class asset is returned
   #
   def get_selected_asset(convert=true)
-    selected_asset = Asset.find_by(:organization_id => @organization_list, :object_key => params[:inventory_id]) unless params[:inventory_id].blank?
+    selected_asset = Rails.application.config.asset_base_class_name.constantize.find_by(:organization_id => @organization_list, :object_key => params[:inventory_id]) unless params[:inventory_id].blank?
     if convert
-      asset = get_typed_asset(selected_asset)
+      asset = Rails.application.config.asset_base_class_name.constantize.get_typed_asset(selected_asset)
     else
       asset = selected_asset
     end
     return asset
   end
 
-  # returns the typed version of the asset
-  def get_typed_asset(asset)
-    Asset.get_typed_asset(asset)
-  end
-
   def get_asset
     # check that the asset is owned by the agency
     @asset = get_selected_asset(render_typed_assets)
     if @asset.nil?
-      if  Asset.find_by(:organization_id => current_user.user_organization_filters.system_filters.first.get_organizations.map{|x| x.id}, :object_key => params[:id]).nil?
+      if  TransamAsset.find_by(:organization_id => current_user.user_organization_filters.system_filters.first.get_organizations.map{|x| x.id}, :object_key => params[:id]).nil?
         redirect_to '/404'
       else
         notify_user(:warning, 'This record is outside your filter. Change your filter if you want to access it.')

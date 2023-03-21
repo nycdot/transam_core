@@ -18,39 +18,39 @@ class AssetEvent < ActiveRecord::Base
 
   # Callbacks
   after_initialize :set_defaults
+  before_create     :set_base_transam_asset
 
   # Associations
 
   # Every event belongs to an asset
   belongs_to  :asset
+  belongs_to  :transam_asset, polymorphic: true
+  belongs_to  :base_transam_asset, class_name: 'TransamAsset'
   # Every event is of a type
   belongs_to  :asset_event_type
   # Assets can be associated with Uploads
   belongs_to  :upload
   # Every event belongs to a creator
-  belongs_to :creator, :class_name => "User", :foreign_key => :created_by_id
+  belongs_to :creator, -> { unscope(where: :active) }, :class_name => "User", :foreign_key => :created_by_id
+  belongs_to :updater, -> { unscope(where: :active) }, :class_name => "User", :foreign_key => :updated_by_id
 
-  validates :asset_id,            :presence => true
+  #validates :transam_asset,            :presence => true
+  validates_associated :transam_asset
   validates :asset_event_type_id, :presence => true
   validates :event_date,          :presence => true
   validate  :validate_event_date_with_purchase
 
   # default scope
-  default_scope { order("event_date, created_at") }
+  default_scope { order("asset_events.event_date, asset_events.created_at") }
   # named scopes
 
   # List of hash parameters allowed by the controller
   FORM_PARAMS = [
     :asset_id,
     :asset_event_type_id,
-    :asset_type_id,
     :event_date,
     :comments
   ]
-
-  def associated_asset_tag
-    asset.asset_tag
-  end
 
   #------------------------------------------------------------------------------
   #
@@ -79,6 +79,11 @@ class AssetEvent < ActiveRecord::Base
   #
   #------------------------------------------------------------------------------
 
+  # usually no conditions on can create but can be overridden by specific asset events
+  def can_update?
+    asset_event_type.active
+  end
+
   # returns true if the organization instance is strongly typed, i.e., a concrete class
   # false otherwise.
   # true
@@ -93,6 +98,21 @@ class AssetEvent < ActiveRecord::Base
     evt = is_typed? ? self : AssetEvent.as_typed_event(self)
     return evt.get_update unless evt.nil?
   end
+
+  # Is this asset event viewable by the user?
+  def viewable_by? user
+    transam_asset.viewable_by? user 
+  end
+
+  ######## API Serializer ##############
+  def api_json(options={})
+    {
+      id: object_key,
+      event_type: asset_event_type.try(:api_json),
+      event_date: event_date,
+      comments: comments
+    }
+  end
   #------------------------------------------------------------------------------
   #
   # Traversal Methods
@@ -103,9 +123,10 @@ class AssetEvent < ActiveRecord::Base
   # If one already exists for the same event_date, return the last created
   # If none exists, returns nil
   def next_event_of_type
-    event = asset.asset_events
+    event = transam_asset.asset_events
       .where('asset_event_type_id = ?', self.asset_event_type_id)
       .where('event_date > ? OR (event_date = ? AND created_at > ?)', self.event_date, self.event_date, (self.new_record? ? Time.current : self.created_at )) # Define a window that backs up to this event
+      .where('object_key != ?', self.object_key)
       .order(:event_date, :created_at => :desc).first
 
     # Return Strongly Typed Asset
@@ -116,9 +137,10 @@ class AssetEvent < ActiveRecord::Base
   # If one already exists for the same event_date, return the last created
   # If none exists, returns nil
   def previous_event_of_type
-    event = asset.asset_events
+    event = Rails.application.config.asset_base_class_name.constantize.get_typed_asset(self.send(Rails.application.config.asset_base_class_name.underscore)).asset_events
       .where("asset_event_type_id = ?", self.asset_event_type_id) # get events of same type
       .where("event_date < ? OR (event_date = ? AND created_at < ?)", self.event_date, self.event_date, (self.new_record? ? Time.current : self.created_at) ) # Define a window that runs up to this event
+      .where('object_key != ?', self.object_key)
       .order(:event_date, :created_at => :asc).last
 
     # Return Strongly Typed Asset
@@ -137,10 +159,14 @@ class AssetEvent < ActiveRecord::Base
     self.event_date ||= Date.today
   end
 
+  def set_base_transam_asset
+    self.base_transam_asset = transam_asset.try(:transam_asset) || transam_asset
+  end
+
   def validate_event_date_with_purchase
     if event_date.nil?
       errors.add(:event_date, "must exist")
-    elsif asset.purchased_new && event_date < asset.purchase_date
+    elsif transam_asset.try(:purchased_new) && event_date < transam_asset.purchase_date
       errors.add(:event_date, "must be on or after purchase date if new purchase")
     end
   end

@@ -8,6 +8,7 @@ RSpec.describe IssuesController, :type => :controller do
   before(:each) do
     Organization.destroy_all
     test_user.organizations << test_user.organization
+    test_user.viewable_organizations << test_user.organization
     test_user.save!
     sign_in test_user
   end
@@ -26,7 +27,7 @@ RSpec.describe IssuesController, :type => :controller do
   # end
 
   it 'GET success' do
-    get :success, :id => test_issue.object_key
+    get :success, params: {:id => test_issue.object_key}
 
     expect(assigns(:issue)).to eq(test_issue)
   end
@@ -45,7 +46,7 @@ RSpec.describe IssuesController, :type => :controller do
 
   it 'POST create' do
     Issue.destroy_all
-    post :create, {:issue => attributes_for(:issue)}
+    post :create, params: {:issue => attributes_for(:issue)}
 
     expect(assigns(:issue).creator).to eq(subject.current_user)
     expect(Issue.count).to eq(1)

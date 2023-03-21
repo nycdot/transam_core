@@ -1,14 +1,15 @@
 class Manufacturer < ActiveRecord::Base
 
   has_many :assets
+  has_many :transam_assets
 
   # default scope
   default_scope { order('code') }
 
   # Manufacturers that are maked as active
   scope :active, -> { where(:active => true) }
-  # Notices that are active and visible for a specific organization
   scope :active_for_asset_type, -> (asset_type) { active.where("filter = ?", asset_type.class_name) }
+
 
   def self.search(text, filter, exact = true)
     if exact
@@ -18,6 +19,17 @@ class Manufacturer < ActiveRecord::Base
       x = where('(name LIKE ? OR code LIKE ?) AND filter = ?', val, val, filter)
     end
     x.first
+  end
+
+  # used for bulk updates
+  def self.schema_structure
+    {
+      "enum": Manufacturer.where.not(name: "Other (Describe)").map{ |man| "#{man.name} (#{man.filter})" },
+      "tuple": Manufacturer.where.not(name: "Other (Describe)").map{ |m| {"id":m.id, "val": m.name + " (" + m.filter + ")" } },
+      "type": "string",
+      "title": "Manufacturer",
+      "allowNew": true
+    }
   end
 
 
@@ -30,7 +42,15 @@ class Manufacturer < ActiveRecord::Base
   end
 
   def to_s
-    "#{code}-#{name}"
+    "#{code} - #{name}"
+  end
+
+  def api_json(options={})
+    {
+      id: id,
+      name: name, 
+      code: code
+    }
   end
 
 end
