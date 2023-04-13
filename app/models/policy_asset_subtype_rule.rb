@@ -24,7 +24,7 @@ class PolicyAssetSubtypeRule < ActiveRecord::Base
   # Every one of these rules applies to an asset type
   belongs_to  :asset_subtype
   # Every one of these rules applies to an asset type
-  belongs_to  :replace_asset_subtype, :class_name => 'AssetSubtype', :foreign_key => :replace_asset_subtype_id
+  belongs_to  :replace_asset_subtype, :class_name => 'AssetSubtype', :foreign_key => :replace_asset_subtype_id, optional: true
 
   #-----------------------------------------------------------------------------
   # Validations

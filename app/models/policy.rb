@@ -24,7 +24,7 @@ class Policy < ActiveRecord::Base
   belongs_to  :organization
 
   # Every policy can have a parent policy
-  belongs_to  :parent, :class_name => 'Policy', :foreign_key => :parent_id
+  belongs_to  :parent, :class_name => 'Policy', :foreign_key => :parent_id, optional: true
 
   # Has a single method for estimating condition
   belongs_to  :condition_estimation_type

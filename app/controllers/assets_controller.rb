@@ -98,7 +98,7 @@ class AssetsController < AssetAwareController
 
     unless @fmt == 'xls'
       # cache the set of asset ids in case we need them later
-      cache_list(@assets.order("#{params[:sort]} #{params[:order]}"), INDEX_KEY_LIST_VAR)
+      cache_list(@assets.order(Arel.sql("#{params[:sort]} #{params[:order]}")), INDEX_KEY_LIST_VAR)
     end
 
     respond_to do |format|
@@ -199,7 +199,7 @@ class AssetsController < AssetAwareController
     end
 
     respond_to do |format|
-      if @asset.update_attributes(form_params)
+      if @asset.update(form_params)
 
         # If the asset was successfully updated, schedule update the condition and disposition asynchronously
         Delayed::Job.enqueue AssetUpdateJob.new(@asset.object_key), :priority => 0

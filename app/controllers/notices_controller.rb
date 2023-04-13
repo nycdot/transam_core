@@ -90,7 +90,7 @@ class NoticesController < OrganizationAwareController
     add_breadcrumb "Notice"
 
     respond_to do |format|
-      if @notice.update_attributes(form_params)
+      if @notice.update(form_params)
         notify_user(:notice, "Notice was successfully updated.")
         format.html { redirect_to notices_url }
         format.json { head :no_content }

@@ -4,6 +4,8 @@
 # Base class for all users. This class represents a generic user.
 #-------------------------------------------------------------------------------
 class User < ActiveRecord::Base
+  # Due to issues with order of associations this was moved here
+  # has_many :users_roles, -> { active }, :inverse_of => :user
 
   # Enable user roles for this use
   rolify
@@ -26,19 +28,19 @@ class User < ActiveRecord::Base
   #-----------------------------------------------------------------------------
   # Associations
   #-----------------------------------------------------------------------------
-
   has_many :users_roles, -> { active }, :inverse_of => :user
-  has_many :roles,      :through => :users_roles
+  # has_many :roles,      :through => :users_roles # This duplicates the relationship and will throw a [ActiveRecord::HasManyThroughOrderError: Cannot have a has_many :through association]
+
 
   # every user belongs to a single organizations
   belongs_to :organization
 
   # Every user can have a weather code associated with their city. This is used
   # to display local weather on the dashboard
-  belongs_to  :weather_code
+  belongs_to  :weather_code, optional: true
 
   # Every user has 0 or 1 user organization filter that they are using and a list that they own
-  belongs_to :user_organization_filter
+  belongs_to :user_organization_filter, optional: true
   has_and_belongs_to_many :user_organization_filters, :join_table => 'users_user_organization_filters'
 
   # every user has access to 0 or more organizations for reporting

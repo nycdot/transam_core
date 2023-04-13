@@ -253,7 +253,7 @@ class UsersController < OrganizationAwareController
     Rails.logger.debug "role_id = #{role_id}, privilege_ids = #{privilege_ids}"
 
     respond_to do |format|
-      if @user.update_attributes(form_params.except(:organization_ids))
+      if @user.update(form_params.except(:organization_ids))
 
 
         # Add the (possibly) new organizations into the object
