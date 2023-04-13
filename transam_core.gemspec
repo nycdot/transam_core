@@ -19,13 +19,11 @@ Gem::Specification.new do |s|
   s.test_files = Dir["test/**/*"]
 
 
-  s.add_dependency 'rails', '~> 5.2'
+  s.add_dependency 'rails', '~> 6.0', '>= 6.0.6.1'
   s.add_dependency "cancancan"
   s.add_dependency "devise"
   s.add_dependency "rolify", '~> 4.1'
   s.add_dependency "high_voltage"
-  #s.add_dependency "fullcalendar-rails"
-  #s.add_dependency 'mail', '2.5.4'
   s.add_dependency 'unitwise'
   s.add_dependency 'chronic'
   s.add_dependency "breadcrumbs_on_rails"
@@ -34,7 +32,6 @@ Gem::Specification.new do |s|
   s.add_dependency 'state_machines-activemodel'
   s.add_dependency 'state_machines-activerecord'
 
-  s.add_dependency 'fog'
   s.add_dependency 'carrierwave'
   s.add_dependency 'kaminari'
   s.add_dependency 'countries'
@@ -46,9 +43,9 @@ Gem::Specification.new do |s|
   s.add_dependency 'simple_form'
   s.add_dependency 'rails-data-migrations'
 
-  s.add_development_dependency 'mail', '2.5.5'
+  s.add_development_dependency 'mail'
   s.add_development_dependency "rspec-rails"
-  s.add_development_dependency "factory_bot_rails"
+  s.add_development_dependency "factory_bot_rails", '4.11.1'
   s.add_development_dependency "database_cleaner"
   s.add_development_dependency "mysql2"
   s.add_development_dependency "shoulda-matchers"

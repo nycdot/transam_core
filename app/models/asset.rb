@@ -29,7 +29,7 @@ class Asset < ActiveRecord::Base
 
   # Before the asset is updated we may need to update things like estimated
   # replacement cost if they updated other things
-  before_update   :before_update_callback, :except => :create
+  before_update   :before_update_callback
 
   before_update :clear_cache
 
