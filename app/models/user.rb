@@ -4,6 +4,8 @@
 # Base class for all users. This class represents a generic user.
 #-------------------------------------------------------------------------------
 class User < ActiveRecord::Base
+  # Due to issues with order of associations this was moved here
+  has_many :users_roles, -> { active }, :inverse_of => :user
 
   # Enable user roles for this use
   rolify
@@ -26,8 +28,6 @@ class User < ActiveRecord::Base
   #-----------------------------------------------------------------------------
   # Associations
   #-----------------------------------------------------------------------------
-
-  has_many :users_roles, -> { active }, :inverse_of => :user
   has_many :roles,      :through => :users_roles
 
   # every user belongs to a single organizations
