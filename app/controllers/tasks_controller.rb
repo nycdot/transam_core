@@ -218,7 +218,7 @@ class TasksController < NestedResourceController
     add_breadcrumb 'Update', edit_task_path(@task)
 
     respond_to do |format|
-      if @task.update_attributes(form_params)
+      if @task.update(form_params)
         notify_user(:notice, "Task was successfully updated.")
         format.html { redirect_to user_tasks_url(current_user) }
         format.json { head :no_content }

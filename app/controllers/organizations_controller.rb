@@ -110,7 +110,7 @@ class OrganizationsController < OrganizationAwareController
     add_breadcrumb "Update"
 
     respond_to do |format|
-      if @org.update_attributes(form_params)
+      if @org.update(form_params)
         notify_user(:notice, "#{@org.name} was successfully updated.")
         format.html { redirect_to organization_url(@org) }
         format.json { head :no_content }

@@ -5,7 +5,7 @@
 #-------------------------------------------------------------------------------
 class User < ActiveRecord::Base
   # Due to issues with order of associations this was moved here
-  has_many :users_roles, -> { active }, :inverse_of => :user
+  # has_many :users_roles, -> { active }, :inverse_of => :user
 
   # Enable user roles for this use
   rolify
@@ -28,7 +28,9 @@ class User < ActiveRecord::Base
   #-----------------------------------------------------------------------------
   # Associations
   #-----------------------------------------------------------------------------
-  # has_many :roles,      :through => :users_roles
+  has_many :users_roles, -> { active }, :inverse_of => :user
+  # has_many :roles,      :through => :users_roles # This duplicates the relationship and will throw a [ActiveRecord::HasManyThroughOrderError: Cannot have a has_many :through association]
+
 
   # every user belongs to a single organizations
   belongs_to :organization

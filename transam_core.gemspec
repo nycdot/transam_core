@@ -19,7 +19,7 @@ Gem::Specification.new do |s|
   s.test_files = Dir["test/**/*"]
 
 
-  s.add_dependency 'rails', '~> 6.0', '>= 6.0.6.1'
+  s.add_dependency 'rails', '~> 6.1', '>= 6.1.7.3'
   s.add_dependency "cancancan"
   s.add_dependency "devise"
   s.add_dependency "rolify", '~> 4.1'

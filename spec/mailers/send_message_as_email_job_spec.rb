@@ -6,7 +6,7 @@ RSpec.describe SendMessageAsEmailJob, :type => :mailer do
 
   describe '#perform' do
     it 'queues an email to a message\'s target if they have elected to receive email' do
-      msg.to_user.update_attributes(:notify_via_email => true)
+      msg.to_user.update(:notify_via_email => true)
       
       expect{SendMessageAsEmailJob.new(msg.object_key).perform}.to change{ActionMailer::Base.deliveries.count}.by(1)
 

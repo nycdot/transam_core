@@ -199,7 +199,7 @@ class AssetsController < AssetAwareController
     end
 
     respond_to do |format|
-      if @asset.update_attributes(form_params)
+      if @asset.update(form_params)
 
         # If the asset was successfully updated, schedule update the condition and disposition asynchronously
         Delayed::Job.enqueue AssetUpdateJob.new(@asset.object_key), :priority => 0
