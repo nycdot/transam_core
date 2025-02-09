@@ -85,21 +85,15 @@ var transam = new function() {
 		$msg.off('click').on('click', updateTableHeader );
 	}
 	// Show a popup message in the UI
-	this.show_popup_message = function(title, message, type) {
-		var class_name = 'alert alert-info';
-		if (type == 'error') {
-			class_name = 'alert alert-danger';
-		} else if (type == 'warning') {
-			class_name = 'alert alert-warning';
-		}
+	this.show_popup_message = function(title, message, class_name) {
 		$.gritter.add({
 			title: title,
-      text: message,
-      time: 5000,
-      class_name: class_name,
-      image: false,
-      sticky: false
-    });
+			text: message,
+			time: 5000,
+			class_name: class_name,
+			image: false,
+			sticky: false
+    	});
 	};
 
 	// Converts a table to a datatable
