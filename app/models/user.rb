@@ -12,7 +12,14 @@ class User < ActiveRecord::Base
 
   # Include default devise modules. Others available are:
   # :confirmable, :lockable, :timeoutable and :omniauthable
-  devise :database_authenticatable, :lockable, :recoverable, :rememberable, :trackable, :validatable, :timeoutable
+  devise  :database_authenticatable, 
+          :lockable, 
+          :recoverable, 
+          :rememberable, 
+          :omniauthable, 
+          :trackable, 
+          :timeoutable,
+          :validatable
 
   # Include the object key mixin
   include TransamObjectKey
