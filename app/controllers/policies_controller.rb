@@ -96,10 +96,10 @@ class PoliciesController < OrganizationAwareController
 
     if params[:policy_asset_type_rule].present?
       rule = PolicyAssetTypeRule.find(params[:policy_asset_type_rule][:id])
-      rule.update_attributes(asset_type_rule_form_params)
+      rule.update(asset_type_rule_form_params)
     else
       rule = PolicyAssetSubtypeRule.find(params[:policy_asset_subtype_rule][:id])
-      rule.update_attributes(asset_subtype_rule_form_params)
+      rule.update(asset_subtype_rule_form_params)
     end
 
     if (rule.try(:replace_asset_subtype_id) || rule.try(:replace_fuel_type_id))
@@ -294,7 +294,7 @@ class PoliciesController < OrganizationAwareController
     add_breadcrumb 'Modify', edit_policy_path(@policy)
 
     respond_to do |format|
-      if @policy.update_attributes(form_params)
+      if @policy.update(form_params)
         notify_user(:notice, "Policy #{@policy.name} was successfully updated.")
         format.html { redirect_to policy_url(@policy) }
         format.json { head :no_content }

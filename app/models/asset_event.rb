@@ -26,9 +26,9 @@ class AssetEvent < ActiveRecord::Base
   # Every event is of a type
   belongs_to  :asset_event_type
   # Assets can be associated with Uploads
-  belongs_to  :upload
+  belongs_to  :upload, optional: true
   # Every event belongs to a creator
-  belongs_to :creator, :class_name => "User", :foreign_key => :created_by_id
+  belongs_to :creator, :class_name => "User", :foreign_key => :created_by_id, optional: true
 
   validates :asset_id,            :presence => true
   validates :asset_event_type_id, :presence => true

@@ -28,7 +28,7 @@ class Task < ActiveRecord::Base
   #------------------------------------------------------------------------------
   # Associations
   #------------------------------------------------------------------------------
-  belongs_to :taskable,  :polymorphic => true
+  belongs_to :taskable,  :polymorphic => true, optional: true
 
   # Every task is created by a user
   belongs_to :user
@@ -40,7 +40,7 @@ class Task < ActiveRecord::Base
   # Every task can be assigned to a user. This can be null
   # in which case the task will be available for everyone
   # in the :organization to take on
-  belongs_to :assigned_to_user, :class_name => "User", :foreign_key => "assigned_to_user_id"
+  belongs_to :assigned_to_user, :class_name => "User", :foreign_key => "assigned_to_user_id", optional: true
 
   # Every task is assigned a priority
   belongs_to :priority_type

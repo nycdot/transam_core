@@ -29,7 +29,7 @@ class Asset < ActiveRecord::Base
 
   # Before the asset is updated we may need to update things like estimated
   # replacement cost if they updated other things
-  before_update   :before_update_callback, :except => :create
+  before_update   :before_update_callback
 
   before_update :clear_cache
 
@@ -47,22 +47,22 @@ class Asset < ActiveRecord::Base
   belongs_to  :asset_subtype
 
   # each asset has a single maintenance provider type
-  belongs_to  :maintenance_provider_type
+  belongs_to  :maintenance_provider_type, optional: true
 
   # each asset has a reason why it is being replaced
-  belongs_to  :replacement_reason_type
+  belongs_to  :replacement_reason_type, optional: true
 
   # each was puchased from a vendor
-  belongs_to  :vendor
+  belongs_to  :vendor, optional: true
 
   # each belongs to a single manufacturer
-  belongs_to  :manufacturer
+  belongs_to  :manufacturer, optional: true
 
   # an upload can be added by bulk updates - new inventory
-  belongs_to :upload
+  belongs_to :upload, optional: true
 
   # each can belong to a parent
-  belongs_to  :parent, :class_name => "Asset",  :foreign_key => :parent_id
+  belongs_to  :parent, :class_name => "Asset",  :foreign_key => :parent_id, optional: true
 
   # Each asset has zero or more asset events. These are all events regardless of
   # event type. Events are deleted when the asset is deleted
@@ -115,7 +115,7 @@ class Asset < ActiveRecord::Base
 
   # Each asset was created and updated by a user
   belongs_to :creator, :class_name => "User", :foreign_key => :created_by_id
-  belongs_to :updator, :class_name => "User", :foreign_key => :updated_by_id
+  belongs_to :updator, :class_name => "User", :foreign_key => :updated_by_id, optional: true
 
   # Has been tagged by the user
   has_many    :asset_tags
@@ -151,16 +151,16 @@ class Asset < ActiveRecord::Base
   #-----------------------------------------------------------------------------
 
   # The last reported condition type for the asset
-  belongs_to      :reported_condition_type,   :class_name => "ConditionType",   :foreign_key => :reported_condition_type_id
+  belongs_to      :reported_condition_type,   :class_name => "ConditionType",   :foreign_key => :reported_condition_type_id, optional: true
 
   # The last estimated condition type for the asset
-  belongs_to      :estimated_condition_type,  :class_name => "ConditionType",   :foreign_key => :estimated_condition_type_id
+  belongs_to      :estimated_condition_type,  :class_name => "ConditionType",   :foreign_key => :estimated_condition_type_id, optional:true
 
   # The disposition type for the asset. Null if the asset is still operational
-  belongs_to      :disposition_type
+  belongs_to      :disposition_type, optional: true
 
   # The last reported disposition type for the asset
-  belongs_to      :service_status_type
+  belongs_to      :service_status_type, optional: true
 
   #-----------------------------------------------------------------------------
   # Transient Attributes
